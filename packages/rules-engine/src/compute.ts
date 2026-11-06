@@ -173,6 +173,10 @@ export interface AttackLine {
   name: string;
   bonus: number;
   damage: string;
+  /** Универсальное оружие двумя руками (боевой посох, длинный меч): урон с большей костью */
+  versatile?: string;
+  /** Двумя руками нельзя: в руке щит */
+  versatileBlocked?: boolean;
   damageType?: DamageType;
   ability: Ability;
   range?: string;
@@ -494,11 +498,13 @@ export function computeSheet(c: Character, content: ContentIndex): Sheet {
     const proficient =
       profs.weapon.has(item.id) || profs.weapon.has(w.martial ? 'martial' : 'simple') || profs.weapon.has(item.name.toLowerCase());
     const m = mod(ability);
+    const twoHanded = w.versatile ?? w.properties.join(' ').match(/универсальное\s*\((\d+к\d+)\)/i)?.[1];
     attacks.push({
       id: inv.id,
       name: item.name,
       bonus: ov(`attack.${inv.id}`, m + (proficient ? pb : 0)),
       damage: `${w.damage}${m === 0 ? '' : m > 0 ? `+${m}` : `${m}`}`,
+      ...(twoHanded ? { versatile: `${twoHanded}${m === 0 ? '' : m > 0 ? `+${m}` : `${m}`}`, ...(shield ? { versatileBlocked: true } : {}) } : {}),
       damageType: w.damageType,
       ability,
       range: w.range,

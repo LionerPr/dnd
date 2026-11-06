@@ -1,4 +1,4 @@
-import { Swords } from 'lucide-react';
+import { Hand, Swords } from 'lucide-react';
 import type { CharacterView, Command } from '../../api/client';
 import { damageName, signed } from '../../lib/format';
 
@@ -101,6 +101,16 @@ export function CombatTab({ view, canEdit, cmd, roll }: { view: CharacterView; c
               <button className="btn sm" onClick={() => roll(dmg(a.damage), `${a.name}: урон`)}>
                 {a.damage}
               </button>
+              {a.versatile && (
+                <button
+                  className="btn sm"
+                  disabled={a.versatileBlocked}
+                  title={a.versatileBlocked ? 'В другой руке щит' : 'Двумя руками'}
+                  onClick={() => roll(dmg(a.versatile!), `${a.name}: урон двумя руками`)}
+                >
+                  <Hand size={14} /> {a.versatile}
+                </button>
+              )}
             </div>
           ))
         )}

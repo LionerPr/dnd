@@ -137,7 +137,7 @@ button.vital:hover { border-color: var(--line-strong); }
 /* Атаки */
 .attack {
   display: grid;
-  grid-template-columns: 1fr 70px 110px;
+  grid-template-columns: 1fr 70px 110px auto;
   gap: 8px;
   align-items: center;
   padding: 9px 14px;
@@ -226,7 +226,7 @@ button.vital:hover { border-color: var(--line-strong); }
   .sheet-head h1 { font-size: 32px; }
   .ability-edit { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .coins { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-  .attack { grid-template-columns: 1fr 56px 96px; }
+  .attack { grid-template-columns: 1fr 56px 96px auto; }
 }
 
 /* ---------- Комната кампании ---------- */

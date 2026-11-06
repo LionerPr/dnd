@@ -326,3 +326,17 @@ describe('стартовое снаряжение класса', () => {
     expect(kitItems('два кинжала и 20 болтов')).toEqual([{ name: 'кинжала', qty: 2 }, { name: '20 болтов', qty: 1 }]);
   });
 });
+
+describe('универсальное оружие', () => {
+  it('двумя руками — урон с большей костью; со щитом нельзя', () => {
+    const staff: Item = { kind: 'item', id: 'staff', name: 'Боевой посох', source: 'srd', category: 'weapon',
+      weapon: { damage: '1к6', damageType: 'bludgeoning', properties: ['Универсальное (1к8)'], martial: false, ranged: false } };
+    const idx: ContentIndex = { ...content, items: new Map([...content.items, [staff.id, staff]]) };
+    const c: Character = { ...torin(), inventory: [{ id: 's1', itemId: 'staff', qty: 1, equipped: true }] };
+    const a = computeSheet(c, idx).attacks.find((x) => x.id === 's1')!;
+    expect(a.versatile).toMatch(/^1к8/);
+    expect(a.versatileBlocked).toBeUndefined();
+    const withShield = computeSheet({ ...c, inventory: [...c.inventory, { id: 'sh', itemId: 'shield', qty: 1, equipped: true }] }, idx);
+    expect(withShield.attacks.find((x) => x.id === 's1')!.versatileBlocked).toBe(true);
+  });
+});
