@@ -15,6 +15,7 @@ export function ContentPicker({
   extra,
   keepOpen,
   toolbar,
+  edition,
 }: {
   kind: string;
   title: string;
@@ -25,10 +26,21 @@ export function ContentPicker({
   extra?: Record<string, string | number | undefined>;
   keepOpen?: boolean;
   toolbar?: React.ReactNode;
+  /** Издание персонажа: показываем записи этого издания, а для 2024 — ещё и записи 2014, у которых нет версии 2024 */
+  edition?: '2014' | '2024';
 }) {
   const [q, setQ] = useState('');
   const list = useContentList(kind, extra);
-  const rows = (list.data?.items ?? []).filter((r) => (!filter || filter(r)) && searchKey(r.name).includes(searchKey(q))).slice(0, 200);
+  const all = list.data?.items ?? [];
+  const has2024 = new Set(all.filter((r) => r.data?.edition === '2024').map((r) => String(r.data?.nameEn ?? '').toLowerCase()).filter(Boolean));
+  const inEdition = (r: ContentRow) => {
+    if (!edition) return true;
+    const e = r.data?.edition ?? '2014';
+    if (e === edition) return true;
+    // Своё и общее без версии 2024 (магические предметы, заклинания не из SRD) остаётся доступным
+    return edition === '2024' && e === '2014' && !has2024.has(String(r.data?.nameEn ?? '').toLowerCase());
+  };
+  const rows = all.filter((r) => inEdition(r) && (!filter || filter(r)) && searchKey(r.name).includes(searchKey(q))).slice(0, 200);
   const pick = (r: ContentRow | null, custom?: string) => {
     onPick(r, custom);
     if (!keepOpen) onClose();
@@ -59,6 +71,7 @@ export function ContentPicker({
               <span className="grow">
                 <b>{r.name}</b>
                 {r.data?.book && <span className="muted small"> · {bookShort(r.data.book)}</span>}
+                {edition && r.data?.edition === '2024' && <span className="muted small"> · 2024</span>}
                 {kind === 'spell' && <span className="muted small"> · {levelName(r.data.level ?? 0)}, {schoolName(r.data.school)}</span>}
                 {kind === 'monster' && <span className="muted small"> · ПО {r.data.cr}, {r.data.type}</span>}
               </span>

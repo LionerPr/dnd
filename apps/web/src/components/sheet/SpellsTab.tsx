@@ -57,6 +57,15 @@ export function SpellCard({ spell }: { spell: Spell }) {
   );
 }
 
+// Заклинания 2014 у персонажа 2024 (если нет версии 2024) — сверяем класс по названию: «волшебник» = srd24-class-wizard
+const SRD24_CLASS_NAMES: Record<string, string> = {
+  bard: 'бард', cleric: 'жрец', druid: 'друид', paladin: 'паладин', ranger: 'следопыт', sorcerer: 'чародей', warlock: 'колдун', wizard: 'волшебник',
+};
+function sameClassByName(names: string[] | undefined, classIds: string[]) {
+  const wanted = classIds.map((id) => SRD24_CLASS_NAMES[id.replace(/^srd24-class-/, '')]).filter(Boolean);
+  return !!names?.some((n) => wanted.includes(n.toLowerCase()));
+}
+
 export function SpellsTab({ view, canEdit, cmd, roll, save }: { view: CharacterView; canEdit: boolean; cmd: (c: Command) => void; roll: Roll; save: (u: (c: Character) => Character) => void }) {
   const { data: c, sheet } = view;
   const [picker, setPicker] = useState(false);
@@ -224,7 +233,8 @@ export function SpellsTab({ view, canEdit, cmd, roll, save }: { view: CharacterV
           kind="spell"
           title="Добавить заклинание"
           keepOpen
-          filter={(r) => !c.spellsKnown.includes(r.id) && (!onlyClass || !classIds.length || (r.data.classes ?? []).some((id: string) => classIds.includes(id)))}
+          edition={c.edition ?? '2014'}
+          filter={(r) => !c.spellsKnown.includes(r.id) && (!onlyClass || !classIds.length || (r.data.classes ?? []).some((id: string) => classIds.includes(id)) || sameClassByName(r.data.classNames, classIds))}
           toolbar={
             classIds.length > 0 && (
               <label className="check small nowrap">

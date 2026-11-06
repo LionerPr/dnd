@@ -131,6 +131,7 @@ export function GearTab({ view, canEdit, cmd, save }: { view: CharacterView; can
         <ContentPicker
           kind="item"
           title="Добавить предмет"
+          edition={c.edition ?? '2014'}
           allowCustom
           onClose={() => setPicker(false)}
           onPick={(row, customName) => {

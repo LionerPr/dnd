@@ -160,6 +160,10 @@ const SEEDS = [
   { name: 'feats', version: 1, kind: 'feat', load: () => import('./seed/feats.json') },
   // Классы, виды и черты D&D 5e SRD 5.2 (2024) © Wizards of the Coast, CC-BY 4.0; русский перевод — открытый набор Long Story Short
   { name: 'srd2024', version: 1, kind: null, load: () => import('./seed/srd2024.json') },
+  // Заклинания SRD 5.2: числа — Open5e (CC-BY 4.0), названия — Long Story Short, тексты переведены для приложения
+  { name: 'srd2024-spells', version: 1, kind: 'spell', load: () => import('./seed/srd2024-spells.json') },
+  // Оружие SRD 5.2 с приёмами (mastery): числа — Open5e, CC-BY 4.0
+  { name: 'srd2024-items', version: 1, kind: 'item', load: () => import('./seed/srd2024-items.json') },
 ] as const;
 
 async function seedLibrary(d1: D1Database) {
