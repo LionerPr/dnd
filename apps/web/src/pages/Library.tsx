@@ -351,7 +351,10 @@ function CatalogPanel() {
               <button className="btn" disabled={start.isPending} onClick={() => start.mutate({ kinds: ['spell'] })}>
                 Все заклинания
               </button>
-              <button className="btn primary" disabled={start.isPending} onClick={() => start.mutate({ kinds: ['race', 'class', 'spell'] })}>
+              <button className="btn" disabled={start.isPending} onClick={() => start.mutate({ kinds: ['item'] })}>
+                Все магические предметы
+              </button>
+              <button className="btn primary" disabled={start.isPending} onClick={() => start.mutate({ kinds: ['race', 'class', 'spell', 'item'] })}>
                 Всё сразу
               </button>
               <button className="btn" disabled={start.isPending} onClick={() => start.mutate({ kinds: ['race', 'class'], homebrew: true })}>

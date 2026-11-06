@@ -6,7 +6,7 @@
 import { useSyncExternalStore } from 'react';
 import { api, ApiError } from '../api/client';
 
-export type ImportKind = 'race' | 'class' | 'spell';
+export type ImportKind = 'race' | 'class' | 'spell' | 'item';
 export interface Parsed {
   url: string;
   kind: ImportKind;
@@ -29,12 +29,12 @@ export async function parsePage(rawUrl: string, html?: string): Promise<Parsed> 
   const m = await importer();
   const url = m.assertDndSuUrl(rawUrl).toString();
   const kind = m.detectKind(url);
-  if (kind !== 'race' && kind !== 'class' && kind !== 'spell') {
-    throw new Error(kind ? 'Импорт этого раздела ещё не готов — пока расы, классы и заклинания' : 'Это не страница расы, класса или заклинания');
+  if (kind !== 'race' && kind !== 'class' && kind !== 'spell' && kind !== 'item') {
+    throw new Error(kind ? 'Импорт этого раздела ещё не готов — пока расы, классы, заклинания и предметы' : 'Это не страница расы, класса, заклинания или предмета');
   }
   const page = html ?? (await fetchText(`/import/page?url=${encodeURIComponent(url)}`));
   try {
-    const data = kind === 'race' ? m.parseRace(page, url) : kind === 'class' ? m.parseClass(page, url) : m.parseSpell(page, url);
+    const data = kind === 'race' ? m.parseRace(page, url) : kind === 'class' ? m.parseClass(page, url) : kind === 'item' ? m.parseItem(page, url) : m.parseSpell(page, url);
     return { url, kind, data };
   } catch (e) {
     throw new Error(`Не получилось разобрать страницу: ${(e as Error).message}`);
@@ -71,7 +71,7 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
  */
 async function indexUrls(kinds: ImportKind[], homebrew: boolean) {
   const out: { kind: ImportKind; url: string }[] = [];
-  for (const kind of IMPORT_ORDER.filter((k) => kinds.includes(k) && k !== 'spell')) {
+  for (const kind of IMPORT_ORDER.filter((k) => kinds.includes(k) && (k === 'race' || k === 'class'))) {
     const html = await fetchText(`/import/page?url=${encodeURIComponent(`https://dnd.su/${kind}/`)}`);
     const prefix = homebrew ? '/homebrew' : '(?:/multiverse)?';
     const seen = new Set<string>();
@@ -85,13 +85,14 @@ async function indexUrls(kinds: ImportKind[], homebrew: boolean) {
   return out;
 }
 
-const IMPORT_ORDER: ImportKind[] = ['race', 'class', 'spell'];
+const IMPORT_ORDER: ImportKind[] = ['race', 'class', 'spell', 'item'];
 
 export async function startCatalog(kinds: ImportKind[], onDone?: () => void, homebrew = false) {
   if (job?.status === 'running') return;
   const m = await importer();
   const items = await indexUrls(kinds, homebrew);
-  if (!homebrew && kinds.includes('spell')) items.push(...m.catalogUrls(await fetchText('/import/sitemap'), ['spell']));
+  const fromSitemap = kinds.filter((k) => k === 'spell' || k === 'item');
+  if (!homebrew && fromSitemap.length) items.push(...m.catalogUrls(await fetchText('/import/sitemap'), fromSitemap));
   job = { kinds, total: items.length, done: 0, failed: [], status: 'running' };
   notify();
   for (const { url } of items) {

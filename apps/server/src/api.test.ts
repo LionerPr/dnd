@@ -59,6 +59,13 @@ describe('игра целиком', () => {
     expect((await as(player.cookie, 'GET', '/api/auth/me')).body.user.username).toBe('torin');
   });
 
+  it('обычное снаряжение уже в библиотеке', async () => {
+    const list = await as(player.cookie, 'GET', '/api/content?kind=item&limit=500');
+    const names = list.body.items.map((r: { name: string }) => r.name);
+    expect(names).toEqual(expect.arrayContaining(['Длинный меч', 'Кольчуга', 'Щит', 'Воровские инструменты', 'Верёвка пеньковая (50 футов)']));
+    expect(list.body.items.length).toBeGreaterThan(150);
+  });
+
   it('свои раса и класс', async () => {
     const race = await as(player.cookie, 'POST', '/api/content', {
       kind: 'race', name: 'Горный дварф',

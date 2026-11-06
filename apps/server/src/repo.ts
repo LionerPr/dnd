@@ -105,7 +105,7 @@ export async function upsertLibraryContent(db: Db, kind: ContentKind, name: stri
   let existing = await db.query<{ id: string }>(`SELECT id FROM content WHERE source_url = $1 AND owner_id IS NULL`, [sourceUrl]);
   // Одна и та же статья dnd.su бывает по разным адресам (/race/213-astral_elf/ → /multiverse/race/213-astral-elf/):
   // номер статьи на сайте общий для всех разделов, поэтому ищем ещё и по нему
-  const article = sourceUrl.match(/\/(race|class|spells)\/(\d+)-/);
+  const article = sourceUrl.match(/\/(race|class|spells|items)\/(\d+)-/);
   if (article) {
     existing = await db.query<{ id: string }>(
       `SELECT id FROM content WHERE owner_id IS NULL AND kind = $1 AND (source_url LIKE $2 OR source_url = $3)

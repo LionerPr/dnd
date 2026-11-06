@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { detectKind, parseClass, parseRace, parseSpell } from './dndsu.js';
+import { detectKind, parseClass, parseGear, parseItem, parseRace, parseSpell } from './dndsu.js';
 
 // Снимки страниц dnd.su не хранятся в репозитории; положите их в test-fixtures/, чтобы прогнать тест.
 const fx = (name: string) => resolve(import.meta.dirname, '../test-fixtures', name);
@@ -140,5 +140,27 @@ describe('умения классов: части и выборы', () => {
     const r = parseRace(readFileSync(fx('281-bugbear.html'), 'utf8'), 'https://dnd.su/multiverse/race/281-bugbear/');
     const lang = r.features.flatMap((f) => f.effects ?? []).filter((e) => e.type === 'proficiency' && e.kind === 'language' || e.type === 'choice' && e.kind === 'language');
     expect(lang).toEqual([{ type: 'proficiency', kind: 'language', ids: ['Общий'] }, expect.objectContaining({ type: 'choice', kind: 'language', pick: 1, of: 'any' })]);
+  });
+});
+
+describe('предметы', () => {
+  const page = (f: string) => readFileSync(fx(`items/${f}`), 'utf8');
+  it.skipIf(!existsSync(fx('items/articles_inventory_96-arms_.html')))('оружие: урон, тип, свойства, воинское и дальнобойное', () => {
+    const items = parseGear(page('articles_inventory_96-arms_.html'), 'https://dnd.su/articles/inventory/96-arms/');
+    expect(items).toHaveLength(37);
+    const dagger = items.find((i) => i.name === 'Кинжал')!;
+    expect(dagger.weapon).toMatchObject({ damage: '1к4', damageType: 'piercing', range: '20/60', martial: false, ranged: false });
+    expect(dagger.cost).toEqual({ amount: 2, coin: 'gp' });
+    expect(items.find((i) => i.name === 'Длинный лук')!.weapon).toMatchObject({ martial: true, ranged: true });
+  });
+  it.skipIf(!existsSync(fx('items/articles_inventory_95-armor-and-shields_.html')))('доспехи и щит', () => {
+    const items = parseGear(page('articles_inventory_95-armor-and-shields_.html'), 'https://dnd.su/articles/inventory/95-armor-and-shields/');
+    expect(items.find((i) => i.name === 'Кожаный доспех')!.armor).toEqual({ base: 11, dexCap: null, type: 'light' });
+    expect(items.find((i) => i.name === 'Латы')!.armor).toEqual({ base: 18, dexCap: 0, type: 'heavy', stealthDisadvantage: true, strength: 15 });
+    expect(items.find((i) => i.category === 'shield')!.shield).toEqual({ bonus: 2 });
+  });
+  it.skipIf(!existsSync(fx('items/items_1-adamantine_armor_.html')))('магический предмет: редкость и цена', () => {
+    const it = parseItem(page('items_1-adamantine_armor_.html'), 'https://dnd.su/items/1-adamantine_armor/');
+    expect(it).toMatchObject({ name: 'Адамантиновый доспех', category: 'magic', rarity: 'необычный', cost: { amount: 500, coin: 'gp' } });
   });
 });

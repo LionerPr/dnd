@@ -1,4 +1,4 @@
-import type { Ability, CharacterClass, ClassLevel, Effect, Feature, FeaturePart, LevelCount, Race, Skill, Spellcasting, Subclass, Subrace } from '@dnd/rules-engine';
+import type { Ability, CharacterClass, ClassLevel, Coin, Effect, Feature, FeaturePart, Item, LevelCount, Race, Skill, Spellcasting, Subclass, Subrace } from '@dnd/rules-engine';
 import { LANGUAGES, SKILLS } from '@dnd/rules-engine';
 import * as cheerio from 'cheerio/slim';
 import type { AnyNode } from 'domhandler';
@@ -801,4 +801,184 @@ export function parseSpell(html: string, url: string): ParsedSpell {
   if (/рукопашную\s+атаку\s+заклинанием/i.test(all)) spell.attack = 'melee';
   else if (/дальнобойную\s+атаку\s+заклинанием/i.test(all)) spell.attack = 'ranged';
   return spell;
+}
+
+// ---------- Предметы ----------
+
+const COIN_WORDS: [RegExp, Coin][] = [
+  [/^мм/i, 'cp'],
+  [/^см/i, 'sp'],
+  [/^эм/i, 'ep'],
+  [/^зм/i, 'gp'],
+  [/^пм/i, 'pp'],
+];
+
+/** «2 зм», «1 000 зм», «5 см.» → { amount, coin } */
+export function parseCost(s: string): Item['cost'] | undefined {
+  const m = s.replace(/ /g, ' ').match(/(\d[\d\s]*)\s*(мм|см|эм|зм|пм)/i);
+  if (!m) return undefined;
+  const coin = COIN_WORDS.find(([re]) => re.test(m[2]!))?.[1] ?? 'gp';
+  return { amount: Number(m[1]!.replace(/\s/g, '')), coin };
+}
+
+/** «4 фнт.», «½ фнт.», «1,5 фнт.», «1/2 фнт.» → фунты */
+function parseWeight(s: string): number | undefined {
+  const t = s.replace(/ /g, ' ').trim();
+  if (/½/.test(t)) return 0.5;
+  if (/¼/.test(t)) return 0.25;
+  const frac = t.match(/(\d+)\s*\/\s*(\d+)/);
+  if (frac) return Number(frac[1]) / Number(frac[2]);
+  const m = t.match(/(\d+(?:[.,]\d+)?)/);
+  return m ? Number(m[1]!.replace(',', '.')) : undefined;
+}
+
+const isCost = (s: string) => /^\d[\d\s ]*\s*(мм|см|эм|зм|пм)\.?$/i.test(s.trim());
+
+const TRANSLIT: Record<string, string> = {
+  а: 'a', б: 'b', в: 'v', г: 'g', д: 'd', е: 'e', ё: 'e', ж: 'zh', з: 'z', и: 'i', й: 'y', к: 'k', л: 'l', м: 'm', н: 'n', о: 'o', п: 'p', р: 'r', с: 's', т: 't',
+  у: 'u', ф: 'f', х: 'h', ц: 'c', ч: 'ch', ш: 'sh', щ: 'sch', ъ: '', ы: 'y', ь: '', э: 'e', ю: 'yu', я: 'ya',
+};
+export const slugify = (s: string) =>
+  s.toLowerCase().split('').map((ch) => TRANSLIT[ch] ?? ch).join('').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+
+const cellTexts = ($: $, tr: AnyNode) => $(tr).children('td,th').map((_, td) => text($(td).text())).get();
+
+function baseItem(name: string, url: string, category: Item['category'], cost: string, weight: string): Item {
+  return {
+    kind: 'item', id: `dndsu-gear-${slugify(name)}`, name, source: 'dnd.su', sourceUrl: `${url}#${slugify(name)}`, category,
+    cost: parseCost(cost), weight: parseWeight(weight), book: "Player's Handbook",
+  };
+}
+
+/**
+ * Обычное снаряжение со статей dnd.su «Оружие», «Доспехи и щиты», «Снаряжение», «Инструменты»:
+ * таблицы с ценой и весом. У оружия — урон и свойства, у доспехов — КД, требование Силы и помеха Скрытности.
+ */
+export function parseGear(html: string, url: string): Item[] {
+  const $ = cheerio.load(html);
+  const out: Item[] = [];
+  const seen = new Set<string>();
+  const push = (it: Item) => {
+    if (!it.name || seen.has(it.name)) return;
+    seen.add(it.name);
+    out.push(it);
+  };
+  $('table').each((_, table) => {
+    const rows = $(table).find('tr').toArray();
+    if (!rows.length) return;
+    const head = cellTexts($, rows[0]!).join(' ').toLowerCase();
+    if (/урон/.test(head)) {
+      // Оружие: разделы «Простое рукопашное оружие», «Воинское дальнобойное оружие»
+      let martial = false;
+      let ranged = false;
+      for (const tr of rows.slice(1)) {
+        const c = cellTexts($, tr);
+        if (c.length === 1) {
+          martial = /воинск/i.test(c[0]!);
+          ranged = /дальнобойн/i.test(c[0]!);
+          continue;
+        }
+        if (c.length < 5) continue;
+        const [name, cost, dmg, weight, props] = c as [string, string, string, string, string];
+        const dm = dmg.match(/(\d+к\d+|\d+)\s*(\S+)?/);
+        const properties = props === '-' || props === '—' ? [] : props.split(/,\s*(?![^()]*\))/).map((p) => p.trim()).filter(Boolean);
+        const it = baseItem(name, url, 'weapon', cost, weight);
+        it.weapon = {
+          damage: dm?.[1] ?? '—',
+          damageType: (DAMAGE_WORDS.find(([re]) => re.test(dm?.[2] ?? ''))?.[1] ?? 'bludgeoning') as NonNullable<Item['weapon']>['damageType'],
+          versatile: props.match(/универсальное\s*\((\d+к\d+)\)/i)?.[1],
+          properties,
+          range: props.match(/дис\.\s*([\d/]+)/i)?.[1],
+          martial,
+          ranged,
+        };
+        push(it);
+      }
+      return;
+    }
+    if (/класс доспеха/.test(head)) {
+      let type: 'light' | 'medium' | 'heavy' | 'shield' = 'light';
+      for (const tr of rows.slice(1)) {
+        const c = cellTexts($, tr);
+        if (c.length === 1) {
+          type = /лёгк|легк/i.test(c[0]!) ? 'light' : /средн/i.test(c[0]!) ? 'medium' : /тяж/i.test(c[0]!) ? 'heavy' : 'shield';
+          continue;
+        }
+        if (c.length < 6) continue;
+        const [name, cost, ac, str, stealth, weight] = c as [string, string, string, string, string, string];
+        if (type === 'shield' || /^\+\d/.test(ac)) {
+          const it = baseItem(name, url, 'shield', cost, weight);
+          it.shield = { bonus: Number(ac.match(/\d+/)?.[0] ?? 2) };
+          push(it);
+          continue;
+        }
+        // «Кожаный», «Стёганый» → «Кожаный доспех»; «Латы», «Кольчуга» — как есть
+        const it = baseItem(/(ый|ий|ой)$/i.test(name) ? `${name} доспех` : name, url, 'armor', cost, weight);
+        const cap = ac.match(/макс\.?\s*(\d+)/i)?.[1];
+        it.armor = {
+          base: Number(ac.match(/\d+/)?.[0] ?? 10),
+          dexCap: /ЛОВ/i.test(ac) ? (cap ? Number(cap) : null) : 0,
+          type,
+          ...(/помех/i.test(stealth) ? { stealthDisadvantage: true } : {}),
+          ...(/\d+/.test(str) ? { strength: Number(str.match(/\d+/)![0]) } : {}),
+        };
+        push(it);
+      }
+      return;
+    }
+    if (!/стоимость|цена/.test(head) || !/вес/.test(head)) return;
+    // Снаряжение и инструменты: иногда по два предмета в строке, заголовки разделов — отдельными ячейками
+    const tools = /инструмент/i.test($('h1, h2.card-title').first().text()) || /100-tools/.test(url);
+    let section = '';
+    for (const tr of rows.slice(1)) {
+      const c = cellTexts($, tr);
+      for (let i = 0; i < c.length; ) {
+        if (i + 1 < c.length && isCost(c[i + 1]!)) {
+          const name = c[i]!;
+          const category: Item['category'] = tools || /инструмент|набор/i.test(section) ? 'tool' : 'gear';
+          push(baseItem(name, url, category, c[i + 1]!, c[i + 2] ?? ''));
+          i += 3;
+        } else {
+          section = c[i]!;
+          i += 1;
+        }
+      }
+    }
+  });
+  return out;
+}
+
+const RARITY = /(очень редк\S*|необычн\S*|обычн\S*|редк\S*|легендарн\S*|артефакт|редкость варьируется)/i;
+
+/** Магический предмет со страницы dnd.su/items/… */
+export function parseItem(html: string, url: string): Item {
+  const $ = cheerio.load(html);
+  const { name, en, book } = cardTitle($);
+  const typeLine = text($('.size-type-alignment').first().text());
+  const description = blockText($, $('[itemprop="description"]').first().children());
+  const rarity = typeLine.match(RARITY)?.[1]?.toLowerCase();
+  const consumable = /^(зелье|свиток|боеприпас)/i.test(typeLine);
+  const effects: Effect[] = [];
+  // «Вы получаете бонус +1 к КД» — кольцо и плащ защиты, магические доспехи и щиты
+  const ac = description.match(/бонус\s*\+(\d)\s*к\s*(?:КД|Классу Доспеха)/i);
+  if (ac && !/^оружие/i.test(typeLine)) effects.push({ type: 'ac_bonus', value: Number(ac[1]) });
+  const resist = description.match(/сопротивлени\S*\s+(?:к\s+)?урону?\s+([^.,;]+)/i);
+  if (resist && !/на ваш выбор|выбранного/i.test(resist[0])) {
+    for (const [re, dmg] of DAMAGE_WORDS) if (re.test(resist[1]!)) effects.push({ type: 'resistance', damage: dmg as never });
+  }
+  return {
+    kind: 'item',
+    id: `dndsu-item-${slugOf(url)}`,
+    name,
+    nameEn: en,
+    book,
+    source: 'dnd.su',
+    sourceUrl: url,
+    category: consumable ? 'consumable' : 'magic',
+    description: [typeLine, description].filter(Boolean).join('\n'),
+    rarity,
+    attunement: /настройк/i.test(typeLine) || undefined,
+    cost: parseCost(text($('.price').first().text())),
+    ...(effects.length ? { effects } : {}),
+  };
 }

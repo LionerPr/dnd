@@ -5,10 +5,10 @@ export function groupSitemap(xml: string): Record<string, string[]> {
   return out;
 }
 
-export const SECTION_FOR = { race: 'race', class: 'class', spell: 'spells' } as const;
+export const SECTION_FOR = { race: 'race', class: 'class', spell: 'spells', item: 'items' } as const;
 export type ImportKind = keyof typeof SECTION_FOR;
 /** Порядок: заклинаниям нужны уже загруженные классы, чтобы связаться с ними */
-export const IMPORT_ORDER: ImportKind[] = ['race', 'class', 'spell'];
+export const IMPORT_ORDER: ImportKind[] = ['race', 'class', 'spell', 'item'];
 
 /** Ссылки для полной загрузки, без «напарников» из Основных правил */
 export function catalogUrls(xml: string, kinds: ImportKind[]): { kind: ImportKind; url: string }[] {
