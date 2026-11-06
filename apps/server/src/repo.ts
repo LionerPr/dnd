@@ -32,24 +32,26 @@ export async function listContent(db: Db, userId: string, opts: { kind?: string;
     where += ` AND c.kind = $${params.length}`;
   }
   if (opts.q) {
+    // lower() в SQLite не знает кириллицу, поэтому ищем по заранее приведённому имени
     params.push(`%${opts.q.toLowerCase()}%`);
-    where += ` AND lower(c.name) LIKE $${params.length}`;
+    where += ` AND c.name_lc LIKE $${params.length}`;
   }
   if (opts.classId) {
-    params.push(JSON.stringify([opts.classId]));
-    where += ` AND c.data->'classes' @> $${params.length}::jsonb`;
+    params.push(opts.classId);
+    where += ` AND EXISTS (SELECT 1 FROM json_each(c.data, '$.classes') WHERE value = $${params.length})`;
   }
   if (opts.level !== undefined) {
     params.push(opts.level);
-    where += ` AND (c.data->>'level')::int = $${params.length}`;
+    where += ` AND json_extract(c.data, '$.level') = $${params.length}`;
   }
   params.push(Math.min(opts.limit ?? 100, 3000), opts.offset ?? 0);
   return db.query<ContentRow>(
     `SELECT c.id, c.kind, c.name, c.owner_id, c.campaign_id, c.visibility, c.source, c.source_url, c.updated_at,
-       (c.data - 'description' - 'features' - 'traits' - 'actions' - 'levels' - 'higherLevels' - 'subclasses' - 'subraces' - 'reactions' - 'legendary')
-         || jsonb_build_object(
-              'subclassCount', jsonb_array_length(COALESCE(c.data->'subclasses', '[]'::jsonb)),
-              'subraceCount', jsonb_array_length(COALESCE(c.data->'subraces', '[]'::jsonb))) AS data
+       json_set(
+         json_remove(c.data, '$.description', '$.features', '$.traits', '$.actions', '$.levels', '$.higherLevels',
+           '$.subclasses', '$.subraces', '$.reactions', '$.legendary'),
+         '$.subclassCount', COALESCE(json_array_length(c.data, '$.subclasses'), 0),
+         '$.subraceCount', COALESCE(json_array_length(c.data, '$.subraces'), 0)) AS data
      FROM content c WHERE ${where} ORDER BY c.name LIMIT $${params.length - 1} OFFSET $${params.length}`,
     params,
   );
@@ -63,12 +65,12 @@ export async function getContent(db: Db, userId: string, id: string): Promise<Co
 
 export async function getContentBatch(db: Db, userId: string, ids: string[]): Promise<ContentRow[]> {
   if (!ids.length) return [];
-  return db.query<ContentRow>(`SELECT * FROM content c WHERE c.id = ANY($2) AND ${VISIBLE}`, [userId, ids]);
+  return db.query<ContentRow>(`SELECT * FROM content c WHERE c.id IN (SELECT value FROM json_each($2)) AND ${VISIBLE}`, [userId, ids]);
 }
 
 export async function getContentMany(db: Db, ids: string[]): Promise<ContentRow[]> {
   if (!ids.length) return [];
-  return db.query<ContentRow>(`SELECT * FROM content WHERE id = ANY($1)`, [ids]);
+  return db.query<ContentRow>(`SELECT * FROM content WHERE id IN (SELECT value FROM json_each($1))`, [ids]);
 }
 
 export async function saveContent(
@@ -82,15 +84,15 @@ export async function saveContent(
     if (!row) throw notFound();
     if (row.owner_id !== userId) throw forbidden('Это чужая запись — сделайте копию');
     await db.query(
-      `UPDATE content SET name = $2, data = $3, visibility = $4, campaign_id = $5, updated_at = now() WHERE id = $1`,
-      [input.id, input.name, { ...input.data, id: input.id, name: input.name }, input.visibility ?? row.visibility, input.campaignId ?? row.campaign_id],
+      `UPDATE content SET name = $2, data = $3, visibility = $4, campaign_id = $5, name_lc = $6, updated_at = now() WHERE id = $1`,
+      [input.id, input.name, { ...input.data, id: input.id, name: input.name }, input.visibility ?? row.visibility, input.campaignId ?? row.campaign_id, input.name.toLowerCase()],
     );
     return input.id;
   }
   const id = `${input.kind}-${nanoid(10)}`;
   await db.query(
-    `INSERT INTO content (id, kind, name, owner_id, campaign_id, visibility, source, source_url, data) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
-    [id, input.kind, input.name, userId, input.campaignId ?? null, input.visibility ?? 'private', input.source ?? 'custom', input.sourceUrl ?? null, { ...input.data, id, name: input.name, kind: input.kind }],
+    `INSERT INTO content (id, kind, name, owner_id, campaign_id, visibility, source, source_url, data, name_lc) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+    [id, input.kind, input.name, userId, input.campaignId ?? null, input.visibility ?? 'private', input.source ?? 'custom', input.sourceUrl ?? null, { ...input.data, id, name: input.name, kind: input.kind }, input.name.toLowerCase()],
   );
   return id;
 }
@@ -100,13 +102,13 @@ export async function upsertLibraryContent(db: Db, kind: ContentKind, name: stri
   const existing = await db.query<{ id: string }>(`SELECT id FROM content WHERE source_url = $1 AND owner_id IS NULL`, [sourceUrl]);
   if (existing[0]) {
     const id = existing[0].id;
-    await db.query(`UPDATE content SET name = $2, data = $3, updated_at = now() WHERE id = $1`, [id, name, { ...data, id, name, kind, source, sourceUrl }]);
+    await db.query(`UPDATE content SET name = $2, data = $3, name_lc = $4, updated_at = now() WHERE id = $1`, [id, name, { ...data, id, name, kind, source, sourceUrl }, name.toLowerCase()]);
     return id;
   }
   const id = `${kind}-${nanoid(10)}`;
   await db.query(
-    `INSERT INTO content (id, kind, name, owner_id, visibility, source, source_url, data) VALUES ($1,$2,$3,NULL,'public',$4,$5,$6)`,
-    [id, kind, name, source, sourceUrl, { ...data, id, name, kind, source, sourceUrl }],
+    `INSERT INTO content (id, kind, name, owner_id, visibility, source, source_url, data, name_lc) VALUES ($1,$2,$3,NULL,'public',$4,$5,$6,$7)`,
+    [id, kind, name, source, sourceUrl, { ...data, id, name, kind, source, sourceUrl }, name.toLowerCase()],
   );
   return id;
 }

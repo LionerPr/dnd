@@ -1,6 +1,6 @@
 import type { Ability, CharacterClass, ClassLevel, Effect, Feature, Race, Skill, Spellcasting, Subclass, Subrace } from '@dnd/rules-engine';
 import { SKILLS } from '@dnd/rules-engine';
-import * as cheerio from 'cheerio';
+import * as cheerio from 'cheerio/slim';
 import type { AnyNode } from 'domhandler';
 
 type $ = cheerio.CheerioAPI;

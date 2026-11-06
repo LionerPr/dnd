@@ -1,5 +1,5 @@
 import { computeSheet, type Character } from '@dnd/rules-engine';
-import type { FastifyInstance } from 'fastify';
+import type { Api } from '../http.js';
 import { nanoid } from 'nanoid';
 import { z } from 'zod';
 import type { AppDeps } from '../app.js';
@@ -15,7 +15,7 @@ const CharacterBody = z.object({
   version: z.number().int().optional(),
 });
 
-export function characterRoutes(api: FastifyInstance, deps: AppDeps) {
+export function characterRoutes(api: Api, deps: AppDeps) {
   const { db } = deps;
 
   api.get('/characters', async (req) => {

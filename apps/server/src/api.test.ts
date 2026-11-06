@@ -1,34 +1,47 @@
-import type { FastifyInstance } from 'fastify';
-import { io as ioClient } from 'socket.io-client';
+/**
+ * Сквозной тест API: настоящий воркер в локальном Cloudflare (workerd) с чистой базой D1 в памяти.
+ * FIXED_RNG=0.5 делает кубики предсказуемыми: d20 → 11, к12 → 7, к6 → 4.
+ */
+import { resolve } from 'node:path';
+import { unstable_startWorker } from 'wrangler';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { buildApp } from './app.js';
-import { openDb, type Db } from './db.js';
 
-process.env.NODE_ENV = 'test';
-
-let app: FastifyInstance;
-let db: Db;
-const rng = () => 0.5; // d20 → 11, к12 → 7
+let worker: Awaited<ReturnType<typeof unstable_startWorker>>;
+let base: string;
 
 async function as(cookie: string | null, method: 'GET' | 'POST' | 'PUT' | 'DELETE', url: string, payload?: unknown) {
-  const res = await app.inject({ method, url, payload: payload as never, headers: cookie ? { cookie } : {} });
-  return { status: res.statusCode, body: res.json() as any, cookie: res.headers['set-cookie'] };
+  const res = await fetch(base + url, {
+    method,
+    headers: { ...(cookie ? { cookie } : {}), ...(payload !== undefined ? { 'content-type': 'application/json' } : {}) },
+    body: payload !== undefined ? JSON.stringify(payload) : undefined,
+  });
+  const text = await res.text();
+  let body: any;
+  try {
+    body = JSON.parse(text);
+  } catch {
+    body = text;
+  }
+  return { status: res.status, body, cookie: res.headers.get('set-cookie') };
 }
 
 async function signup(username: string) {
   const r = await as(null, 'POST', '/api/auth/register', { username, password: 'secret1', displayName: username });
   expect(r.status).toBe(200);
-  const raw = Array.isArray(r.cookie) ? r.cookie[0]! : r.cookie!;
-  return { cookie: raw.split(';')[0]!, user: r.body.user };
+  return { cookie: r.cookie!.split(';')[0]!, user: r.body.user };
 }
 
 beforeAll(async () => {
-  db = await openDb();
-  ({ app } = await buildApp(db, { rng, webDist: '/nonexistent' }));
-});
+  worker = await unstable_startWorker({
+    config: resolve(import.meta.dirname, '../wrangler.jsonc'),
+    bindings: { FIXED_RNG: { type: 'plain_text', value: '0.5' } },
+    dev: { persist: false, server: { hostname: '127.0.0.1', port: 0 }, inspector: false, logLevel: 'warn' } as never,
+  });
+  await worker.ready;
+  base = (await worker.url).origin;
+}, 120_000);
 afterAll(async () => {
-  await app.close();
-  await db.close();
+  await worker?.dispose();
 });
 
 describe('игра целиком', () => {
@@ -193,15 +206,42 @@ describe('игра целиком', () => {
   });
 
   it('обновления приходят по сокету', async () => {
-    await app.listen({ port: 0, host: '127.0.0.1' });
-    const port = (app.server.address() as { port: number }).port;
-    const sock = ioClient(`http://127.0.0.1:${port}`, { extraHeaders: { cookie: player.cookie }, transports: ['websocket'] });
-    const joined = await new Promise<{ ok: boolean; role?: string }>((res) => sock.on('connect', () => sock.emit('join', campaignId, res)));
-    expect(joined).toEqual({ ok: true, role: 'player' });
-    const got = new Promise<any>((res) => sock.on('character', res));
+    const ws = new WebSocket(`${base.replace('http', 'ws')}/ws/campaign/${campaignId}`, { headers: { cookie: player.cookie } } as never);
+    await new Promise((res, rej) => {
+      ws.addEventListener('open', res);
+      ws.addEventListener('error', rej);
+    });
+    const got = new Promise<any>((res) =>
+      ws.addEventListener('message', (e) => {
+        const msg = JSON.parse(String(e.data));
+        if (msg.event === 'character') res(msg.payload);
+      }),
+    );
     await as(dm.cookie, 'POST', `/api/characters/${charId}/command`, { command: { type: 'condition', condition: 'poisoned', on: true } });
     const update = await got;
     expect(update.data.state.conditions).toContain('poisoned');
-    sock.close();
+    ws.close();
+    // Чужой не подключится
+    const stranger = await signup('stranger');
+    const bad = new WebSocket(`${base.replace('http', 'ws')}/ws/campaign/${campaignId}`, { headers: { cookie: stranger.cookie } } as never);
+    const outcome = await new Promise((res) => {
+      bad.addEventListener('open', () => res('open'));
+      bad.addEventListener('error', () => res('refused'));
+    });
+    expect(outcome).toBe('refused');
+  });
+
+  it('вход приключенцем с новым героем', async () => {
+    const newbie = await signup('newbie');
+    expect((await as(newbie.cookie, 'POST', '/api/campaigns/join', { code: 'ZZZZZZ', newCharacter: 'Лишний' })).status).toBe(404);
+    expect((await as(newbie.cookie, 'GET', '/api/characters')).body.characters).toHaveLength(0);
+    const r = await as(newbie.cookie, 'POST', '/api/campaigns/join', { code: invite, newCharacter: 'Брэн' });
+    expect(r.status).toBe(200);
+    expect(r.body.characters.some((c: { id: string; data: { name: string } }) => c.id === r.body.characterId && c.data.name === 'Брэн')).toBe(true);
+  });
+
+  it('поиск по-русски без учёта регистра', async () => {
+    const list = await as(player.cookie, 'GET', `/api/content?q=${encodeURIComponent('горный')}`);
+    expect(list.body.items.map((i: { name: string }) => i.name)).toContain('Горный дварф');
   });
 });

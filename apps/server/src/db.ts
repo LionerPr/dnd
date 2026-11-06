@@ -1,54 +1,55 @@
-import { PGlite } from '@electric-sql/pglite';
-import { mkdirSync } from 'node:fs';
-import postgres from 'postgres';
-
 /**
- * Тонкая обёртка над базой: в продакшене — настоящий PostgreSQL (DATABASE_URL),
- * для разработки и тестов — встроенный PGlite (тот же Postgres, без установки).
+ * База — Cloudflare D1 (SQLite). Код запросов писался под PostgreSQL, поэтому обёртка
+ * переводит знакомые конструкции: параметры $1 → ?1, now(), приведения типов ::text,
+ * объекты в параметрах — в JSON, JSON-колонки и логические колонки — обратно при чтении.
+ * Интерактивных транзакций у D1 нет: tx() просто выполняет шаги по очереди.
  */
 export interface Db {
   query<T = Record<string, unknown>>(text: string, params?: unknown[]): Promise<T[]>;
   tx<R>(fn: (db: Db) => Promise<R>): Promise<R>;
-  close(): Promise<void>;
 }
 
-function fromPglite(pg: PGlite | Parameters<Parameters<PGlite['transaction']>[0]>[0]): Db {
-  return {
+const JSON_COLUMNS = new Set(['data', 'settings', 'combat', 'payload', 'before']);
+const BOOL_COLUMNS = new Set(['is_admin', 'undone', 'hidden']);
+export const NOW = `strftime('%Y-%m-%dT%H:%M:%fZ','now')`;
+
+export function translate(sql: string): string {
+  return sql
+    .replace(/\$(\d+)/g, '?$1')
+    .replace(/now\(\)/g, NOW)
+    .replace(/([\w.]+)::text\s+AS\s+(\w+)/gi, 'CAST($1 AS TEXT) AS $2')
+    .replace(/(\b(?:\w+\.)?id)::text\b/g, (_, col: string) => `CAST(${col} AS TEXT) AS ${col.split('.').pop()}`)
+    .replace(/::(?:text|int|integer|boolean|jsonb)\b/g, '');
+}
+
+function toParam(p: unknown): unknown {
+  if (p === undefined) return null;
+  if (typeof p === 'boolean') return p ? 1 : 0;
+  if (p !== null && typeof p === 'object') return JSON.stringify(p);
+  return p;
+}
+
+function fromRow(row: Record<string, unknown>) {
+  for (const k of Object.keys(row)) {
+    const v = row[k];
+    if (JSON_COLUMNS.has(k) && typeof v === 'string') row[k] = JSON.parse(v);
+    else if (BOOL_COLUMNS.has(k) && typeof v === 'number') row[k] = v === 1;
+  }
+  return row;
+}
+
+export function fromD1(d1: D1Database): Db {
+  const db: Db = {
     async query<T>(text: string, params: unknown[] = []) {
-      return (await pg.query<T>(text, params as never[])).rows;
+      const res = await d1.prepare(translate(text)).bind(...params.map(toParam)).all();
+      return (res.results ?? []).map((r) => fromRow(r as Record<string, unknown>)) as T[];
     },
-    async tx(fn) {
-      if (!('transaction' in pg)) return fn(this);
-      return (pg as PGlite).transaction((t) => fn(fromPglite(t)));
-    },
-    async close() {
-      if ('close' in pg) await (pg as PGlite).close();
-    },
+    tx: (fn) => fn(db),
   };
-}
-
-function fromPostgres(sql: postgres.Sql | postgres.TransactionSql): Db {
-  return {
-    async query<T>(text: string, params: unknown[] = []) {
-      return (await sql.unsafe(text, params.map((p) => (p !== null && typeof p === 'object' ? sql.json(p as never) : p)) as never[])) as unknown as T[];
-    },
-    async tx(fn) {
-      if (!('begin' in sql)) return fn(this);
-      return (sql as postgres.Sql).begin((t) => fn(fromPostgres(t))) as never;
-    },
-    async close() {
-      if ('end' in sql) await (sql as postgres.Sql).end();
-    },
-  };
-}
-
-export async function openDb(opts: { url?: string; dataDir?: string } = {}): Promise<Db> {
-  // PGlite создаёт только последнюю папку пути: родительские создаём сами (первый запуск на чистой машине)
-  if (!opts.url && opts.dataDir && !opts.dataDir.startsWith('memory://')) mkdirSync(opts.dataDir, { recursive: true });
-  const db = opts.url ? fromPostgres(postgres(opts.url, { max: 10 })) : fromPglite(new PGlite(opts.dataDir));
-  await migrate(db);
   return db;
 }
+
+const NOW_DEFAULT = `DEFAULT (${NOW})`;
 
 const MIGRATIONS: string[] = [
   `
@@ -57,13 +58,13 @@ const MIGRATIONS: string[] = [
     username text NOT NULL UNIQUE,
     display_name text NOT NULL,
     password_hash text NOT NULL,
-    is_admin boolean NOT NULL DEFAULT false,
-    created_at timestamptz NOT NULL DEFAULT now()
+    is_admin integer NOT NULL DEFAULT 0,
+    created_at text NOT NULL ${NOW_DEFAULT}
   );
   CREATE TABLE sessions (
     token_hash text PRIMARY KEY,
     user_id text NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    expires_at timestamptz NOT NULL
+    expires_at text NOT NULL
   );
   CREATE TABLE campaigns (
     id text PRIMARY KEY,
@@ -71,9 +72,9 @@ const MIGRATIONS: string[] = [
     description text NOT NULL DEFAULT '',
     dm_id text NOT NULL REFERENCES users(id),
     invite_code text NOT NULL UNIQUE,
-    settings jsonb NOT NULL DEFAULT '{}',
-    combat jsonb,
-    created_at timestamptz NOT NULL DEFAULT now()
+    settings text NOT NULL DEFAULT '{}',
+    combat text,
+    created_at text NOT NULL ${NOW_DEFAULT}
   );
   CREATE TABLE content (
     id text PRIMARY KEY,
@@ -84,8 +85,9 @@ const MIGRATIONS: string[] = [
     visibility text NOT NULL DEFAULT 'private',
     source text NOT NULL DEFAULT 'custom',
     source_url text,
-    data jsonb NOT NULL,
-    updated_at timestamptz NOT NULL DEFAULT now()
+    data text NOT NULL,
+    name_lc text NOT NULL DEFAULT '',
+    updated_at text NOT NULL ${NOW_DEFAULT}
   );
   CREATE INDEX content_kind_name ON content(kind, name);
   CREATE UNIQUE INDEX content_source_url ON content(source_url) WHERE source_url IS NOT NULL AND owner_id IS NULL;
@@ -93,22 +95,22 @@ const MIGRATIONS: string[] = [
     id text PRIMARY KEY,
     owner_id text NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     campaign_id text REFERENCES campaigns(id) ON DELETE SET NULL,
-    data jsonb NOT NULL,
+    data text NOT NULL,
     version integer NOT NULL DEFAULT 1,
-    updated_at timestamptz NOT NULL DEFAULT now()
+    updated_at text NOT NULL ${NOW_DEFAULT}
   );
   CREATE TABLE campaign_members (
     campaign_id text NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE,
     user_id text NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     role text NOT NULL,
-    joined_at timestamptz NOT NULL DEFAULT now(),
+    joined_at text NOT NULL ${NOW_DEFAULT},
     PRIMARY KEY (campaign_id, user_id)
   );
   CREATE TABLE npcs (
     id text PRIMARY KEY,
     campaign_id text NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE,
-    data jsonb NOT NULL,
-    created_at timestamptz NOT NULL DEFAULT now()
+    data text NOT NULL,
+    created_at text NOT NULL ${NOW_DEFAULT}
   );
   CREATE TABLE achievements (
     id text PRIMARY KEY,
@@ -116,43 +118,50 @@ const MIGRATIONS: string[] = [
     title text NOT NULL,
     description text NOT NULL DEFAULT '',
     icon text NOT NULL DEFAULT 'star',
-    created_at timestamptz NOT NULL DEFAULT now()
+    created_at text NOT NULL ${NOW_DEFAULT}
   );
   CREATE TABLE achievement_awards (
     id text PRIMARY KEY,
     achievement_id text NOT NULL REFERENCES achievements(id) ON DELETE CASCADE,
     character_id text NOT NULL REFERENCES characters(id) ON DELETE CASCADE,
     note text NOT NULL DEFAULT '',
-    awarded_at timestamptz NOT NULL DEFAULT now()
+    awarded_at text NOT NULL ${NOW_DEFAULT}
   );
   CREATE TABLE events (
-    id bigserial PRIMARY KEY,
+    id integer PRIMARY KEY AUTOINCREMENT,
     campaign_id text REFERENCES campaigns(id) ON DELETE CASCADE,
     actor_id text REFERENCES users(id) ON DELETE SET NULL,
     target_kind text NOT NULL,
     target_id text NOT NULL,
     type text NOT NULL,
     summary text NOT NULL,
-    payload jsonb NOT NULL DEFAULT '{}',
-    before jsonb,
-    undone boolean NOT NULL DEFAULT false,
-    hidden boolean NOT NULL DEFAULT false,
-    created_at timestamptz NOT NULL DEFAULT now()
+    payload text NOT NULL DEFAULT '{}',
+    before text,
+    undone integer NOT NULL DEFAULT 0,
+    hidden integer NOT NULL DEFAULT 0,
+    created_at text NOT NULL ${NOW_DEFAULT}
   );
   CREATE INDEX events_campaign ON events(campaign_id, id DESC);
+  CREATE INDEX events_target ON events(target_id, id);
   `,
 ];
 
-async function migrate(db: Db) {
-  await db.query(`CREATE TABLE IF NOT EXISTS schema_version (version integer NOT NULL)`);
-  const rows = await db.query<{ version: number }>(`SELECT version FROM schema_version`);
-  let current = rows[0]?.version ?? 0;
-  if (!rows.length) await db.query(`INSERT INTO schema_version VALUES (0)`);
-  for (; current < MIGRATIONS.length; current++) {
-    const sql = MIGRATIONS[current]!;
-    await db.tx(async (t) => {
-      for (const stmt of sql.split(/;\s*\n/).map((s) => s.trim()).filter(Boolean)) await t.query(stmt);
-      await t.query(`UPDATE schema_version SET version = $1`, [current + 1]);
-    });
-  }
+let migrated: Promise<void> | null = null;
+
+/** Схема создаётся сама при первом запросе — отдельный шаг при выкладке не нужен. */
+export function ensureSchema(d1: D1Database) {
+  migrated ??= (async () => {
+    await d1.prepare(`CREATE TABLE IF NOT EXISTS schema_version (version integer NOT NULL)`).run();
+    const row = await d1.prepare(`SELECT version FROM schema_version`).first<{ version: number }>();
+    let current = row?.version ?? 0;
+    if (!row) await d1.prepare(`INSERT INTO schema_version VALUES (0)`).run();
+    for (; current < MIGRATIONS.length; current++) {
+      const stmts = MIGRATIONS[current]!.split(/;\s*\n/).map((s) => s.trim()).filter(Boolean);
+      await d1.batch([...stmts.map((s) => d1.prepare(s)), d1.prepare(`UPDATE schema_version SET version = ?1`).bind(current + 1)]);
+    }
+  })().catch((e) => {
+    migrated = null;
+    throw e;
+  });
+  return migrated;
 }

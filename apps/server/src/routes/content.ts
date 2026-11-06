@@ -1,9 +1,10 @@
-import type { FastifyInstance } from 'fastify';
+import type { Api } from '../http.js';
 import { z } from 'zod';
 import type { AppDeps } from '../app.js';
 import { requireUser } from '../auth.js';
 import { memberRole, deleteContent, getContent, getContentBatch, listContent, saveContent } from '../repo.js';
 import { forbidden } from '../errors.js';
+import { linkSpellClasses } from './import.js';
 
 const Kind = z.enum(['race', 'class', 'spell', 'item', 'monster', 'feat']);
 
@@ -17,7 +18,7 @@ const ContentInput = z.object({
   sourceUrl: z.string().max(500).nullable().optional(),
 });
 
-export function contentRoutes(api: FastifyInstance, { db }: AppDeps) {
+export function contentRoutes(api: Api, { db }: AppDeps) {
   api.get('/content', async (req) => {
     const user = requireUser(req);
     const q = z
@@ -51,7 +52,9 @@ export function contentRoutes(api: FastifyInstance, { db }: AppDeps) {
     const user = requireUser(req);
     const body = ContentInput.parse(req.body);
     if (body.campaignId && !(await memberRole(db, body.campaignId, user.id))) throw forbidden();
-    const id = await saveContent(db, user.id, body);
+    // Заклинание с dnd.su: связать названия классов с классами библиотеки
+    const data = body.kind === 'spell' && body.source === 'dnd.su' ? await linkSpellClasses(db, body.data) : body.data;
+    const id = await saveContent(db, user.id, { ...body, data });
     return { item: await getContent(db, user.id, id) };
   });
 

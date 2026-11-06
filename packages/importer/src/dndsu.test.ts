@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { parseClass, parseRace, parseSpell } from './dndsu.js';
 
 // Снимки страниц dnd.su не хранятся в репозитории; положите их в test-fixtures/, чтобы прогнать тест.
-const fx = (name: string) => resolve(import.meta.dirname, '../../test-fixtures', name);
+const fx = (name: string) => resolve(import.meta.dirname, '../test-fixtures', name);
 const has = existsSync(fx('78-dwarf.html')) && existsSync(fx('87-barbarian.html'));
 
 describe.skipIf(!has)('разбор dnd.su', () => {

@@ -1,11 +1,11 @@
-import type { FastifyInstance } from 'fastify';
+import type { Api } from '../http.js';
 import { z } from 'zod';
 import type { AppDeps } from '../app.js';
 import { COOKIE, createSession, destroySession, login, register, requireUser, setSessionCookie } from '../auth.js';
 
 const Credentials = z.object({ username: z.string().max(64), password: z.string().max(200), displayName: z.string().max(64).optional() });
 
-export function authRoutes(api: FastifyInstance, { db, secureCookies }: AppDeps) {
+export function authRoutes(api: Api, { db, secureCookies }: AppDeps) {
   api.post('/auth/register', async (req, reply) => {
     const body = Credentials.parse(req.body);
     const user = await register(db, body.username, body.displayName ?? body.username, body.password);

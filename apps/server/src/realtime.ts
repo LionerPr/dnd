@@ -1,58 +1,96 @@
-import type { Server as HttpServer } from 'node:http';
-import { Server } from 'socket.io';
-import { COOKIE, userFromToken } from './auth.js';
-import type { Db } from './db.js';
-import { memberRole } from './repo.js';
+import { DurableObject } from 'cloudflare:workers';
 
 /**
- * Комнаты сокетов: c:<id>:dm — мастер, c:<id>:players — игроки.
- * Всё, что видят только мастера (скрытые враги, точные хиты), уходит в комнату мастера.
+ * Живые обновления через Durable Objects: одна «комната» на кампанию (c:<id>) и на персонажа (ch:<id>).
+ * Сокеты в комнате кампании помечены тегом dm или players — всё, что видит только мастер
+ * (скрытые враги, точные хиты), уходит лишь сокетам мастера.
+ * Сокеты «спят» между сообщениями (hibernation), поэтому комната не тратит время, пока все молчат.
+ */
+export class Room extends DurableObject {
+  constructor(ctx: DurableObjectState, env: unknown) {
+    super(ctx, env as never);
+    // Пинг клиента отвечается без пробуждения объекта
+    ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair('ping', 'pong'));
+  }
+
+  /** Подключение уже проверено воркером; он же передаёт тег в заголовке. */
+  async fetch(request: Request) {
+    if (request.headers.get('Upgrade') !== 'websocket') return new Response('Нужен WebSocket', { status: 426 });
+    const tag = request.headers.get('X-Room-Tag') ?? 'watch';
+    const pair = new WebSocketPair();
+    this.ctx.acceptWebSocket(pair[1], [tag]);
+    return new Response(null, { status: 101, webSocket: pair[0] });
+  }
+
+  async broadcast(tags: string[], message: string) {
+    const seen = new Set<WebSocket>();
+    for (const tag of tags) {
+      for (const ws of this.ctx.getWebSockets(tag)) {
+        if (seen.has(ws)) continue;
+        seen.add(ws);
+        try {
+          ws.send(message);
+        } catch {
+          // сокет уже закрывается — пропускаем
+        }
+      }
+    }
+  }
+
+  async webSocketMessage() {
+    // Клиенты ничего не присылают, кроме пинга (на него отвечает autoResponse)
+  }
+
+  async webSocketClose(ws: WebSocket, code: number) {
+    try {
+      ws.close(code === 1005 ? 1000 : code, 'bye');
+    } catch {
+      // уже закрыт
+    }
+  }
+}
+
+export interface RoomEnv {
+  ROOMS: DurableObjectNamespace<Room>;
+}
+
+/**
+ * Рассылка из обработчика запроса. Сообщения уходят по очереди (порядок важен: «персонаж», потом «событие»)
+ * и не задерживают ответ — воркер дожидается их через waitUntil.
  */
 export class Realtime {
-  io: Server | null = null;
+  private chain: Promise<unknown> = Promise.resolve();
 
-  attach(server: HttpServer, db: Db) {
-    const io = new Server(server, { path: '/socket.io', serveClient: false });
-    this.io = io;
-    io.use(async (socket, next) => {
-      const cookie = socket.handshake.headers.cookie ?? '';
-      const token = cookie.split(';').map((p) => p.trim().split('=')).find(([k]) => k === COOKIE)?.[1];
-      const user = await userFromToken(db, token ? decodeURIComponent(token) : undefined);
-      if (!user) return next(new Error('unauthorized'));
-      socket.data.user = user;
-      next();
-    });
-    io.on('connection', (socket) => {
-      socket.on('join', async (campaignId: string, ack?: (r: { ok: boolean; role?: string }) => void) => {
-        if (typeof campaignId !== 'string') return ack?.({ ok: false });
-        const role = await memberRole(db, campaignId, socket.data.user.id);
-        if (!role) return ack?.({ ok: false });
-        for (const room of socket.rooms) if (room.startsWith('c:')) socket.leave(room);
-        socket.join(`c:${campaignId}:${role === 'dm' ? 'dm' : 'players'}`);
-        socket.join(`u:${socket.data.user.id}`);
-        ack?.({ ok: true, role });
-      });
-      socket.on('watch-character', (id: string) => {
-        if (typeof id === 'string') socket.join(`ch:${id}`);
-      });
-    });
+  constructor(
+    private rooms: DurableObjectNamespace<Room> | null,
+    private waitUntil: (p: Promise<unknown>) => void = () => {},
+  ) {}
+
+  private send(room: string, tags: string[], event: string, payload: unknown) {
+    const rooms = this.rooms;
+    if (!rooms) return;
+    const message = JSON.stringify({ event, payload });
+    this.chain = this.chain
+      .then(() => rooms.get(rooms.idFromName(room)).broadcast(tags, message))
+      .catch((e) => console.error('broadcast', room, e));
+    this.waitUntil(this.chain);
   }
 
   /** Событие для всех в кампании */
   all(campaignId: string, event: string, payload: unknown) {
-    this.io?.to([`c:${campaignId}:dm`, `c:${campaignId}:players`]).emit(event, payload);
+    this.send(`c:${campaignId}`, ['dm', 'players'], event, payload);
   }
 
   dm(campaignId: string, event: string, payload: unknown) {
-    this.io?.to(`c:${campaignId}:dm`).emit(event, payload);
+    this.send(`c:${campaignId}`, ['dm'], event, payload);
   }
 
   players(campaignId: string, event: string, payload: unknown) {
-    this.io?.to(`c:${campaignId}:players`).emit(event, payload);
+    this.send(`c:${campaignId}`, ['players'], event, payload);
   }
 
-  /** Персонаж вне кампании: обновить его открытые листы (например, на другом устройстве) */
+  /** Открытые листы персонажа (например, на другом устройстве) */
   character(id: string, event: string, payload: unknown) {
-    this.io?.to(`ch:${id}`).emit(event, payload);
+    this.send(`ch:${id}`, ['watch'], event, payload);
   }
 }

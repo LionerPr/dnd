@@ -1,18 +1,22 @@
-import { existsSync } from 'node:fs';
-import { resolve } from 'node:path';
-import cookie from '@fastify/cookie';
-import fastifyStatic from '@fastify/static';
-import Fastify, { type FastifyInstance } from 'fastify';
-import { ZodError } from 'zod';
 import { COOKIE, userFromToken } from './auth.js';
-import type { Db } from './db.js';
-import { HttpError } from './errors.js';
-import { Realtime } from './realtime.js';
+import { ensureSchema, fromD1, type Db } from './db.js';
+import { Api, handle, json, parseCookies } from './http.js';
+import { Realtime, type Room } from './realtime.js';
+import { characterAccess } from './service.js';
+import { getCharacter, memberRole } from './repo.js';
 import { authRoutes } from './routes/auth.js';
 import { campaignRoutes } from './routes/campaigns.js';
 import { characterRoutes } from './routes/characters.js';
 import { contentRoutes } from './routes/content.js';
 import { importRoutes } from './routes/import.js';
+import { HttpError } from './errors.js';
+
+export interface Env {
+  DB: D1Database;
+  ROOMS: DurableObjectNamespace<Room>;
+  /** Только для тестов: «кубики» всегда выдают это число (0…1) */
+  FIXED_RNG?: string;
+}
 
 export interface AppDeps {
   db: Db;
@@ -21,50 +25,60 @@ export interface AppDeps {
   rng: () => number;
 }
 
-export async function buildApp(db: Db, opts: { secureCookies?: boolean; webDist?: string; rng?: () => number } = {}) {
-  const app = Fastify({ logger: process.env.NODE_ENV === 'test' ? false : { level: 'info' }, bodyLimit: 5 * 1024 * 1024 });
-  const deps: AppDeps = { db, rt: new Realtime(), secureCookies: !!opts.secureCookies, rng: opts.rng ?? Math.random };
+function routes(deps: AppDeps) {
+  const api = new Api();
+  authRoutes(api, deps);
+  contentRoutes(api, deps);
+  characterRoutes(api, deps);
+  campaignRoutes(api, deps);
+  importRoutes(api, deps);
+  api.get('/health', () => ({ ok: true }));
+  return api;
+}
 
-  await app.register(cookie);
-  app.decorateRequest('user', null);
-  app.addHook('preHandler', async (req) => {
-    req.user = await userFromToken(db, req.cookies[COOKIE]);
-  });
-
-  app.setErrorHandler((err, req, reply) => {
-    if (err instanceof HttpError) return reply.status(err.status).send({ error: err.message });
-    if (err instanceof ZodError) {
-      return reply.status(400).send({ error: 'Неверные данные', issues: err.issues.map((i) => `${i.path.join('.')}: ${i.message}`) });
+/** Подключение к живой комнате: проверяем вход и права, затем передаём сокет объекту комнаты. */
+async function websocket(request: Request, env: Env, db: Db, path: string) {
+  if (request.headers.get('Upgrade') !== 'websocket') return json({ error: 'Нужен WebSocket' }, 426);
+  const user = await userFromToken(db, parseCookies(request.headers.get('Cookie'))[COOKIE]);
+  if (!user) return json({ error: 'Нужно войти' }, 401);
+  const m = /^\/ws\/(campaign|character)\/([^/]+)$/.exec(path);
+  if (!m) return json({ error: 'Не найдено' }, 404);
+  const [, kind, id] = m as unknown as [string, string, string];
+  let room: string;
+  let tag: string;
+  if (kind === 'campaign') {
+    const role = await memberRole(db, id, user.id);
+    if (!role) return json({ error: 'Вы не участник этой кампании' }, 403);
+    room = `c:${id}`;
+    tag = role === 'dm' ? 'dm' : 'players';
+  } else {
+    try {
+      const access = await characterAccess(db, user, await getCharacter(db, id));
+      if (!access.canView) return json({ error: 'Нет доступа' }, 403);
+    } catch (e) {
+      if (e instanceof HttpError) return json({ error: e.message }, e.status);
+      throw e;
     }
-    const status = (err as { statusCode?: number }).statusCode;
-    if (status && status < 500) return reply.status(status).send({ error: (err as Error).message });
-    req.log.error(err);
-    return reply.status(500).send({ error: 'Ошибка сервера' });
-  });
-
-  await app.register(
-    async (api) => {
-      authRoutes(api, deps);
-      contentRoutes(api, deps);
-      characterRoutes(api, deps);
-      campaignRoutes(api, deps);
-      importRoutes(api, deps);
-      api.get('/health', async () => ({ ok: true }));
-    },
-    { prefix: '/api' },
-  );
-
-  const dist = opts.webDist ?? resolve(import.meta.dirname, '../../web/dist');
-  if (existsSync(dist)) {
-    // wildcard: true — файлы ищутся на диске при каждом запросе, поэтому пересборка фронтенда не требует перезапуска
-    await app.register(fastifyStatic, { root: dist, wildcard: true });
-    app.setNotFoundHandler((req, reply) => {
-      if (req.url.startsWith('/api') || req.url.startsWith('/assets/') || req.method !== 'GET') return reply.status(404).send({ error: 'Не найдено' });
-      return reply.sendFile('index.html');
-    });
+    room = `ch:${id}`;
+    tag = 'watch';
   }
+  const headers = new Headers(request.headers);
+  headers.set('X-Room-Tag', tag);
+  return env.ROOMS.get(env.ROOMS.idFromName(room)).fetch(new Request(request, { headers }));
+}
 
-  await app.ready();
-  deps.rt.attach(app.server, db);
-  return { app: app as FastifyInstance, deps };
+export async function handleRequest(request: Request, env: Env, ctx: ExecutionContext) {
+  const url = new URL(request.url);
+  await ensureSchema(env.DB);
+  const db = fromD1(env.DB);
+  if (url.pathname.startsWith('/ws/')) return websocket(request, env, db, url.pathname);
+  if (!url.pathname.startsWith('/api/')) return json({ error: 'Не найдено' }, 404);
+  const fixed = env.FIXED_RNG ? Number(env.FIXED_RNG) : null;
+  const deps: AppDeps = {
+    db,
+    rt: new Realtime(env.ROOMS, (p) => ctx.waitUntil(p)),
+    secureCookies: url.protocol === 'https:',
+    rng: fixed !== null ? () => fixed : Math.random,
+  };
+  return handle(routes(deps), request, url.pathname.slice(4), (cookies) => userFromToken(db, cookies[COOKIE]));
 }
