@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Download, FileUp, Plus, Search, Square } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { parsePage, saveToLibrary, startCatalog, stopCatalog, useCatalogJob, type ImportKind, type Parsed } from '../lib/dndsu';
 import { api, type ContentRow } from '../api/client';
 import { Empty, Field, Loading, Modal, Segmented, Tabs, useToast } from '../components/ui';
 import { KIND_NAMES, levelName, plural, schoolName } from '../lib/format';
@@ -134,11 +135,7 @@ export function LibraryPage() {
 
 // ---------- Импорт одной страницы ----------
 
-interface Preview {
-  url: string;
-  kind: Kind;
-  data: any;
-}
+type Preview = Parsed;
 
 function ImportModal({ onClose }: { onClose: () => void }) {
   const { user } = useAuth();
@@ -152,7 +149,7 @@ function ImportModal({ onClose }: { onClose: () => void }) {
   const fileRef = useRef<HTMLInputElement>(null);
   const onError = (e: Error) => toast(e.message, 'error');
 
-  const load = useMutation({ mutationFn: () => api<Preview>('/import/preview', { body: { url: url.trim(), html } }), onSuccess: setPreview, onError });
+  const load = useMutation({ mutationFn: () => parsePage(url.trim(), html), onSuccess: setPreview, onError });
   const saveMine = useMutation({
     mutationFn: (p: Preview) => api<{ item: ContentRow }>('/content', { body: { kind: p.kind, name: p.data.name, data: p.data, source: 'dnd.su', sourceUrl: p.url } }),
     onSuccess: (r) => {
@@ -162,7 +159,7 @@ function ImportModal({ onClose }: { onClose: () => void }) {
     onError,
   });
   const saveLibrary = useMutation({
-    mutationFn: (p: Preview) => api<{ id: string }>('/import/library', { body: { url: p.url, html } }),
+    mutationFn: (p: Preview) => saveToLibrary(p),
     onSuccess: (r) => {
       qc.invalidateQueries({ queryKey: ['content'] });
       toast('Добавлено в общую библиотеку');
@@ -289,33 +286,16 @@ function PreviewFeatures({ features }: { features: { id: string; name: string; l
 
 // ---------- Загрузка разделов целиком (администратор) ----------
 
-interface Job {
-  kinds: string[];
-  total: number;
-  done: number;
-  failed: { url: string; error: string }[];
-  status: 'running' | 'finished' | 'stopped';
-}
-
 function CatalogPanel() {
   const toast = useToast();
   const qc = useQueryClient();
-  const job = useQuery({
-    queryKey: ['catalog-job'],
-    queryFn: () => api<{ job: Job | null }>('/import/catalog'),
-    refetchInterval: (q) => (q.state.data?.job?.status === 'running' ? 3000 : false),
-  });
+  const j = useCatalogJob();
+  const running = j?.status === 'running';
   const start = useMutation({
-    mutationFn: (kinds: string[]) => api('/import/catalog', { body: { kinds } }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['catalog-job'] }),
+    mutationFn: (kinds: ImportKind[]) => startCatalog(kinds, () => qc.invalidateQueries({ queryKey: ['content'] })),
     onError: (e: Error) => toast(e.message, 'error'),
   });
-  const stop = useMutation({ mutationFn: () => api('/import/catalog', { method: 'DELETE' }), onSuccess: () => qc.invalidateQueries({ queryKey: ['catalog-job'] }) });
-  const j = job.data?.job;
-  const running = j?.status === 'running';
-  useEffect(() => {
-    if (j && !running && j.done > 0) void qc.invalidateQueries({ queryKey: ['content'] });
-  }, [j?.status, j?.done, running, qc]); // eslint-disable-line react-hooks/exhaustive-deps
+  const stop = { mutate: stopCatalog };
 
   return (
     <div className="panel" style={{ marginTop: 32 }}>
@@ -325,7 +305,7 @@ function CatalogPanel() {
       </div>
       <div className="panel-pad stack">
         <p className="small muted" style={{ margin: 0 }}>
-          Сервер обходит карту сайта и забирает страницы по одной, не чаще раза в полторы секунды. Уже загруженные записи обновляются, а не дублируются.
+          Браузер обходит карту сайта и забирает страницы по одной, не чаще раза в полторы секунды, — держите вкладку открытой до конца. Уже загруженные записи обновляются, а не дублируются.
         </p>
         {j && (
           <div className="stack" style={{ gap: 6 }}>

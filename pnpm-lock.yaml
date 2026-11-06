@@ -41,6 +41,9 @@ importers:
 
   apps/web:
     dependencies:
+      '@dnd/importer':
+        specifier: workspace:*
+        version: link:../../packages/importer
       '@dnd/rules-engine':
         specifier: workspace:*
         version: link:../../packages/rules-engine
