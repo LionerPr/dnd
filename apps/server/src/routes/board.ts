@@ -85,7 +85,7 @@ export const emptyBoard = (): Board => ({
 });
 
 const MAX_STROKES = 300;
-const MAX_POINTS = 800;
+const MAX_POINTS = 600;
 const MAX_MEDIA = 100;
 const MAX_TOKENS = 120;
 
@@ -184,26 +184,10 @@ export async function applyOp(b: Board, op: BoardOp, c: Ctx): Promise<AppliedOp[
       b.tokens = b.tokens.filter((x) => x.id !== op.id);
       return [{ t: 'token-remove', id: op.id }];
     }
-    case 'stroke': {
-      if (!c.dm && !b.playersDraw) throw forbidden('Мастер выключил рисование для игроков');
-      const pts = op.stroke.points.length % 2 ? op.stroke.points.slice(0, -1) : op.stroke.points;
-      const s: Stroke = { id: nanoid(8), color: op.stroke.color, width: op.stroke.width, points: pts.map(round), authorId: c.user.id };
-      b.strokes.push(s);
-      if (b.strokes.length > MAX_STROKES) b.strokes = b.strokes.slice(-MAX_STROKES);
-      return [{ t: 'stroke', stroke: s }];
-    }
-    case 'stroke-remove': {
-      const s = b.strokes.find((x) => x.id === op.id);
-      if (!s) return [];
-      if (!c.dm && s.authorId !== c.user.id) throw forbidden('Стереть чужой рисунок может только мастер');
-      b.strokes = b.strokes.filter((x) => x.id !== op.id);
-      return [{ t: 'stroke-remove', id: op.id }];
-    }
-    case 'strokes-clear': {
-      if (!c.dm) throw forbidden('Это может только мастер');
-      b.strokes = [];
-      return [{ t: 'strokes-clear' }];
-    }
+    case 'stroke':
+    case 'stroke-remove':
+    case 'strokes-clear':
+      throw new Error('рисунки хранятся отдельно');
     case 'settings': {
       if (!c.dm) throw forbidden('Это может только мастер');
       if (op.mapFileId !== undefined) {
@@ -272,10 +256,46 @@ function opsForPlayers(ops: AppliedOp[], before: Map<string, boolean>): AppliedO
   return out;
 }
 
+/** Запись доски без рисунков: рисунки — в board_strokes, чтобы частые операции не таскали мегабайты линий */
 export async function loadBoard(deps: AppDeps, campaignId: string): Promise<{ board: Board; version: number }> {
   const rows = await deps.db.query<{ data: Board; version: number }>(`SELECT data, version FROM boards WHERE campaign_id = $1`, [campaignId]);
   if (!rows[0]) return { board: emptyBoard(), version: 0 };
-  return { board: { ...emptyBoard(), ...rows[0].data }, version: rows[0].version };
+  return { board: { ...emptyBoard(), ...rows[0].data, strokes: [] }, version: rows[0].version };
+}
+
+async function loadStrokes(deps: AppDeps, campaignId: string): Promise<Stroke[]> {
+  const rows = await deps.db.query<{ data: Stroke }>(`SELECT data FROM board_strokes WHERE campaign_id = $1 ORDER BY rowid`, [campaignId]);
+  return rows.map((r) => r.data);
+}
+
+const STROKE_OPS = new Set(['stroke', 'stroke-remove', 'strokes-clear']);
+
+async function applyStrokeOp(deps: AppDeps, campaignId: string, op: BoardOp, c: { user: User; dm: boolean; playersDraw: boolean }): Promise<AppliedOp[]> {
+  const { db } = deps;
+  if (op.t === 'stroke') {
+    if (!c.dm && !c.playersDraw) throw forbidden('Мастер выключил рисование для игроков');
+    const pts = op.stroke.points.length % 2 ? op.stroke.points.slice(0, -1) : op.stroke.points;
+    const st: Stroke = { id: nanoid(8), color: op.stroke.color, width: op.stroke.width, points: pts.map(round), authorId: c.user.id };
+    await db.query(`INSERT INTO board_strokes (id, campaign_id, author_id, data) VALUES ($1, $2, $3, $4)`, [st.id, campaignId, c.user.id, st]);
+    await db.query(
+      `DELETE FROM board_strokes WHERE campaign_id = $1 AND rowid NOT IN (SELECT rowid FROM board_strokes WHERE campaign_id = $1 ORDER BY rowid DESC LIMIT ${MAX_STROKES})`,
+      [campaignId],
+    );
+    return [{ t: 'stroke', stroke: st }];
+  }
+  if (op.t === 'stroke-remove') {
+    const row = (await db.query<{ author_id: string }>(`SELECT author_id FROM board_strokes WHERE id = $1 AND campaign_id = $2`, [op.id, campaignId]))[0];
+    if (!row) return [];
+    if (!c.dm && row.author_id !== c.user.id) throw forbidden('Стереть чужой рисунок может только мастер');
+    await db.query(`DELETE FROM board_strokes WHERE id = $1`, [op.id]);
+    return [{ t: 'stroke-remove', id: op.id }];
+  }
+  if (op.t === 'strokes-clear') {
+    if (!c.dm) throw forbidden('Это может только мастер');
+    await db.query(`DELETE FROM board_strokes WHERE campaign_id = $1`, [campaignId]);
+    return [{ t: 'strokes-clear' }];
+  }
+  return [];
 }
 
 export function boardRoutes(api: Api, deps: AppDeps) {
@@ -291,7 +311,8 @@ export function boardRoutes(api: Api, deps: AppDeps) {
     const user = requireUser(req);
     const { id } = req.params as { id: string };
     const r = await role(id, user);
-    const { board } = await loadBoard(deps, id);
+    const [{ board }, strokes] = await Promise.all([loadBoard(deps, id), loadStrokes(deps, id)]);
+    board.strokes = strokes;
     return { board: r === 'dm' ? board : boardForPlayers(board), serverNow: Date.now() };
   });
 
@@ -310,23 +331,36 @@ export function boardRoutes(api: Api, deps: AppDeps) {
       }
       return fileCache.get(key)!;
     };
+    const broadcast = (applied: AppliedOp[], now: number, visibleBefore = new Map<string, boolean>()) => {
+      if (!applied.length) return;
+      rt.dm(id, 'board', { ops: applied, by: user.id, at: now });
+      const forPlayers = opsForPlayers(applied, visibleBefore);
+      if (forPlayers.length) rt.players(id, 'board', { ops: forPlayers, by: user.id, at: now });
+    };
+    // Рисунки — отдельные строки, без перезаписи доски
+    const strokeOps = ops.filter((o) => STROKE_OPS.has(o.t));
+    const boardOps = ops.filter((o) => !STROKE_OPS.has(o.t));
+    const strokeApplied: AppliedOp[] = [];
+    if (strokeOps.length) {
+      const { board } = await loadBoard(deps, id);
+      for (const op of strokeOps) strokeApplied.push(...(await applyStrokeOp(deps, id, op, { user, dm: r === 'dm', playersDraw: board.playersDraw })));
+      broadcast(strokeApplied, Date.now());
+    }
+    if (!boardOps.length) return { ops: strokeApplied, serverNow: Date.now() };
     // Оптимистичная запись: если кто-то успел раньше, перечитываем и применяем заново
     for (let attempt = 0; attempt < 4; attempt++) {
       const { board, version } = await loadBoard(deps, id);
       const visibleBefore = new Map(board.tokens.map((t) => [t.id, !!t.hidden]));
       const now = Date.now();
       const applied: AppliedOp[] = [];
-      for (const op of ops) applied.push(...(await applyOp(board, op, { user, dm: r === 'dm', myCharacters: mine, campaignId: id, fileOk, now })));
+      for (const op of boardOps) applied.push(...(await applyOp(board, op, { user, dm: r === 'dm', myCharacters: mine, campaignId: id, fileOk, now })));
+      const { strokes: _drop, ...stored } = board;
       const saved = version === 0
-        ? await db.query<{ version: number }>(`INSERT INTO boards (campaign_id, data, version) VALUES ($1, $2, 1) ON CONFLICT(campaign_id) DO NOTHING RETURNING version`, [id, board])
-        : await db.query<{ version: number }>(`UPDATE boards SET data = $2, version = version + 1 WHERE campaign_id = $1 AND version = $3 RETURNING version`, [id, board, version]);
+        ? await db.query<{ version: number }>(`INSERT INTO boards (campaign_id, data, version) VALUES ($1, $2, 1) ON CONFLICT(campaign_id) DO NOTHING RETURNING version`, [id, stored])
+        : await db.query<{ version: number }>(`UPDATE boards SET data = $2, version = version + 1 WHERE campaign_id = $1 AND version = $3 RETURNING version`, [id, stored, version]);
       if (!saved[0]) continue;
-      if (applied.length) {
-        rt.dm(id, 'board', { ops: applied, by: user.id, at: now });
-        const forPlayers = opsForPlayers(applied, visibleBefore);
-        if (forPlayers.length) rt.players(id, 'board', { ops: forPlayers, by: user.id, at: now });
-      }
-      return { ops: applied, serverNow: now };
+      broadcast(applied, now, visibleBefore);
+      return { ops: [...strokeApplied, ...applied], serverNow: now };
     }
     throw new HttpError(409, 'Доску одновременно меняют несколько человек — попробуйте ещё раз');
   });

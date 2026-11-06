@@ -13,14 +13,14 @@ const TOKEN_COLORS = ['#3a6db3', '#b33a3a', '#3a8f5a', '#8a5bb3', '#b3893a', '#5
 interface View { x: number; y: number; scale: number }
 
 /** Упростить линию: выкинуть точки ближе 2 пикселей доски к предыдущей */
-function simplify(points: number[], min = 2) {
+function simplify(points: number[], min = 3) {
   const out: number[] = [points[0]!, points[1]!];
   for (let i = 2; i < points.length; i += 2) {
     const dx = points[i]! - out[out.length - 2]!;
     const dy = points[i + 1]! - out[out.length - 1]!;
     if (dx * dx + dy * dy >= min * min) out.push(points[i]!, points[i + 1]!);
   }
-  return out.slice(0, 1600);
+  return out.slice(0, 1200);
 }
 
 export function BoardView({ campaignId, dm, userId, characters, npcs }: { campaignId: string; dm: boolean; userId: string; characters: CharacterView[]; npcs: Npc[] }) {

@@ -173,6 +173,28 @@ const MIGRATIONS: string[] = [
     version integer NOT NULL DEFAULT 1
   );
   `,
+  // Индексы под частые запросы: без них D1 читает всю таблицу (и тратит лимит «прочитанных строк»).
+  // Рисунки доски — отдельными строками, чтобы движение фишки не переписывало мегабайт линий.
+  `
+  CREATE INDEX IF NOT EXISTS characters_owner ON characters(owner_id);
+  CREATE INDEX IF NOT EXISTS characters_campaign ON characters(campaign_id);
+  CREATE INDEX IF NOT EXISTS members_user ON campaign_members(user_id);
+  CREATE INDEX IF NOT EXISTS npcs_campaign ON npcs(campaign_id, created_at);
+  CREATE INDEX IF NOT EXISTS achievements_campaign ON achievements(campaign_id);
+  CREATE INDEX IF NOT EXISTS awards_achievement ON achievement_awards(achievement_id);
+  CREATE INDEX IF NOT EXISTS awards_character ON achievement_awards(character_id);
+  CREATE INDEX IF NOT EXISTS sessions_user ON sessions(user_id);
+  CREATE INDEX IF NOT EXISTS content_owner ON content(owner_id, kind);
+  CREATE INDEX IF NOT EXISTS content_kind_lc ON content(kind, name_lc);
+  CREATE TABLE board_strokes (
+    id text PRIMARY KEY,
+    campaign_id text NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE,
+    author_id text NOT NULL,
+    data text NOT NULL,
+    created_at text NOT NULL ${NOW_DEFAULT}
+  );
+  CREATE INDEX board_strokes_campaign ON board_strokes(campaign_id, created_at);
+  `,
 ];
 
 let migrated: Promise<void> | null = null;

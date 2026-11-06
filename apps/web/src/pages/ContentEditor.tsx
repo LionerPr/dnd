@@ -241,7 +241,7 @@ function Editor({ row, kind }: { row?: ContentRow; kind: Kind }) {
     onSuccess: (r) => {
       setDirty(false);
       qc.invalidateQueries({ queryKey: ['content'] });
-      qc.setQueryData(['content-item', r.item.id], r);
+      qc.invalidateQueries({ queryKey: ['content-item', r.item.id] });
       toast('Сохранено');
       if (!row) nav(`/library/${r.item.id}`, { replace: true });
     },

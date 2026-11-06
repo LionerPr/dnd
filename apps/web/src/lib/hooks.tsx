@@ -101,10 +101,11 @@ export function useRoller(campaignId: string | null | undefined, characterId?: s
 export function useContentList(kind: string, extra: Record<string, string | number | undefined> = {}) {
   const params = new URLSearchParams({ kind, limit: '3000' });
   for (const [k, v] of Object.entries(extra)) if (v !== undefined && v !== '') params.set(k, String(v));
-  return useQuery({ queryKey: ['content', kind, extra], queryFn: () => api<{ items: ContentRow[] }>(`/content?${params}`) });
+  // Библиотека меняется редко: список держим 5 минут, после правок его сбрасывают явно
+  return useQuery({ queryKey: ['content', kind, extra], queryFn: () => api<{ items: ContentRow[] }>(`/content?${params}`), staleTime: 5 * 60_000 });
 }
 
 /** Полные данные расы, класса и т.п. из библиотеки */
 export function useContentItem<T>(id: string | undefined) {
-  return useQuery({ queryKey: ['content-item', id], queryFn: () => api<{ item: ContentRow }>(`/content/${id}`).then((r) => r.item.data as T), enabled: !!id });
+  return useQuery({ queryKey: ['content-item', id], queryFn: () => api<{ item: ContentRow }>(`/content/${id}`).then((r) => r.item.data as T), enabled: !!id, staleTime: 10 * 60_000 });
 }

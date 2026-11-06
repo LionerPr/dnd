@@ -52,7 +52,7 @@ export async function listContent(db: Db, userId: string, opts: { kind?: string;
     `SELECT c.id, c.kind, c.name, c.owner_id, c.campaign_id, c.visibility, c.source, c.source_url, c.updated_at,
        json_set(
          json_remove(c.data, '$.description', '$.features', '$.traits', '$.actions', '$.levels', '$.higherLevels',
-           '$.subclasses', '$.subraces', '$.reactions', '$.legendary'),
+           '$.subclasses', '$.subraces', '$.reactions', '$.legendary', '$.bonusActions', '$.legendaryIntro'),
          '$.subclassCount', COALESCE(json_array_length(c.data, '$.subclasses'), 0),
          '$.subraceCount', COALESCE(json_array_length(c.data, '$.subraces'), 0)) AS data
      FROM content c WHERE ${where} ORDER BY c.name LIMIT $${params.length - 1} OFFSET $${params.length}`,
