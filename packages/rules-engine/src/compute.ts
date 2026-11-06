@@ -95,6 +95,19 @@ function collectEffects(c: Character, content: ContentIndex, features: SourcedFe
   return effects;
 }
 
+/** Значение колонки из таблицы класса на текущем уровне персонажа («Боевые искусства»: «1к6») */
+function classColumn(c: Character, content: ContentIndex, name: RegExp): string | undefined {
+  for (const entry of c.classes) {
+    const cls = content.classes.get(entry.classId);
+    const rows = (cls?.levels ?? []).filter((l) => l.level <= entry.level).sort((a, b) => b.level - a.level);
+    for (const row of rows) {
+      const key = Object.keys(row.columns ?? {}).find((k) => name.test(k));
+      if (key && row.columns![key] && row.columns![key] !== '—' && row.columns![key] !== '-') return row.columns![key];
+    }
+  }
+  return undefined;
+}
+
 const isAsi = (f: Feature) => f.asi || /^увеличение характеристик/i.test(f.name);
 
 /**
@@ -369,6 +382,9 @@ export function computeSheet(c: Character, content: ContentIndex): Sheet {
     }
   }
   for (const r of resources) r.used = Math.min(r.max, c.state.resourcesUsed[r.id] ?? 0);
+  // «Движение без доспехов» монаха и подобное: колонка таблицы класса, только без доспеха и щита
+  const unarmoredMove = Number(classColumn(c, content, /скорость без доспехов/i)?.match(/\d+/)?.[0] ?? 0);
+  if (unarmoredMove && !armor && !shield) speed.walk += unarmoredMove;
   if (c.state.exhaustion >= 5) speed.walk = 0;
   else if (c.state.exhaustion >= 2) speed.walk = Math.floor(speed.walk / 2);
 
@@ -419,6 +435,22 @@ export function computeSheet(c: Character, content: ContentIndex): Sheet {
       ability,
       range: w.range,
       properties: w.properties,
+    });
+  }
+
+  // «Боевые искусства»: безоружный удар костью из таблицы класса, Ловкостью или Силой
+  const martial = classColumn(c, content, /боевые искусства/i);
+  if (martial && /^\d+к\d+$/.test(martial)) {
+    const ability: Ability = mod('dex') > mod('str') ? 'dex' : 'str';
+    const m = mod(ability);
+    attacks.push({
+      id: 'unarmed',
+      name: 'Безоружный удар',
+      bonus: ov('attack.unarmed', m + pb),
+      damage: `${martial}${m === 0 ? '' : m > 0 ? `+${m}` : `${m}`}`,
+      damageType: 'bludgeoning',
+      ability,
+      properties: ['боевые искусства'],
     });
   }
 

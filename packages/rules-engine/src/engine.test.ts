@@ -240,3 +240,22 @@ describe('увеличение характеристик', () => {
     expect(s.pendingChoices.some((p) => p.asi)).toBe(false);
   });
 });
+
+describe('таблица класса', () => {
+  const monk: CharacterClass = {
+    ...barbarian, id: 'monk', name: 'Монах', hitDie: 8, features: [],
+    levels: [
+      { level: 1, features: [], columns: { 'Боевые искусства': '1к4', 'Скорость без доспехов': '—' } },
+      { level: 2, features: [], columns: { 'Боевые искусства': '1к4', 'Скорость без доспехов': '+10 футов' } },
+      { level: 5, features: [], columns: { 'Боевые искусства': '1к6', 'Скорость без доспехов': '+10 футов' } },
+    ],
+  };
+  const idx: ContentIndex = { ...content, classes: new Map([[monk.id, monk]]) };
+  const kai = (): Character => ({ ...torin(), raceId: undefined, subraceId: undefined, inventory: [], classes: [{ classId: 'monk', level: 5 }], baseAbilities: { str: 10, dex: 16, con: 14, int: 10, wis: 15, cha: 8 } });
+
+  it('боевые искусства и движение без доспехов', () => {
+    const s = computeSheet(kai(), idx);
+    expect(s.attacks.find((a) => a.id === 'unarmed')).toMatchObject({ damage: '1к6+3', bonus: 6, ability: 'dex' });
+    expect(s.speed.walk).toBe(40);
+  });
+});

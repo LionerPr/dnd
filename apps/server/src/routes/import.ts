@@ -102,7 +102,8 @@ export function importRoutes(api: FastifyInstance, { db }: AppDeps) {
     } catch (e) {
       throw new HttpError(502, `dnd.su не отвечает: ${(e as Error).message}`);
     }
-    const urls = ORDER.filter((k) => kinds.includes(k)).flatMap((k) => map[SECTION_FOR[k]] ?? []);
+    // Напарники (sidekick) из «Основных правил» — не классы для игроков
+    const urls = ORDER.filter((k) => kinds.includes(k)).flatMap((k) => map[SECTION_FOR[k]] ?? []).filter((u) => !/sidekick/.test(u));
     const current: Job = { id: String(Date.now()), kinds, total: urls.length, done: 0, failed: [], status: 'running', startedAt: new Date().toISOString() };
     job = current;
     void (async () => {
