@@ -48,7 +48,7 @@ export async function verifyPassword(password: string, stored: string) {
 
 export async function register(db: Db, username: string, displayName: string, password: string): Promise<User> {
   const name = username.trim().toLowerCase();
-  if (!/^[a-z0-9_.-]{3,32}$/.test(name)) throw new HttpError(400, 'Логин: 3–32 символа, латиница, цифры, точка, дефис');
+  if (!/^[a-z0-9_.@+-]{3,64}$/.test(name)) throw new HttpError(400, 'Логин: 3–64 символа — латиница, цифры, точка, дефис; можно почту');
   if (password.length < 6) throw new HttpError(400, 'Пароль — минимум 6 символов');
   const exists = await db.query(`SELECT 1 FROM users WHERE username = $1`, [name]);
   if (exists.length) throw new HttpError(409, 'Такой логин уже занят');
