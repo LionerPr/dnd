@@ -1,0 +1,257 @@
+import type { Ability, Coin, Condition, DamageType, Skill, SpellSchool } from './data.js';
+
+// ---------- Эффекты: машинные правила, которые лист применяет сам ----------
+
+export type ProficiencyKind = 'armor' | 'weapon' | 'tool' | 'language' | 'save' | 'skill';
+
+export type Effect =
+  | { type: 'ability_bonus'; ability: Ability; value: number }
+  /** «+2 к одной и +1 к другой на выбор»: игрок выбирает, выбор хранится в character.choices */
+  | { type: 'ability_choice'; id: string; pick: number; value: number; from?: Ability[] }
+  | { type: 'speed'; walk?: number; fly?: number; swim?: number; climb?: number }
+  | { type: 'darkvision'; range: number }
+  | { type: 'resistance' | 'immunity' | 'vulnerability'; damage: DamageType }
+  | { type: 'condition_immunity'; condition: Condition }
+  | { type: 'proficiency'; kind: ProficiencyKind; ids: string[] }
+  /** Выбор из списка (навыки, инструменты, языки): выбранное хранится в character.choices[id] */
+  | { type: 'choice'; id: string; kind: ProficiencyKind; pick: number; of: string[] | 'any' }
+  | { type: 'expertise'; skills: Skill[] }
+  | { type: 'hp_per_level'; value: number }
+  | { type: 'ac_bonus'; value: number }
+  /** Защита без доспехов и подобное: 10 + модификаторы */
+  | { type: 'ac_formula'; base: number; abilities: Ability[]; allowShield: boolean }
+  | { type: 'initiative_bonus'; value: number }
+  | { type: 'resource'; id: string; name: string; max: number | Partial<Record<number, number>>; recharge: 'short' | 'long' | 'none' };
+
+export interface Feature {
+  id: string;
+  name: string;
+  description: string;
+  level?: number;
+  effects?: Effect[];
+  /** Опциональное правило (например, из «Котла Таши»): включается в настройках персонажа */
+  optional?: boolean;
+}
+
+// ---------- Контент: расы, классы, заклинания, предметы, монстры ----------
+
+export type ContentSource = 'custom' | 'srd' | 'dnd.su';
+
+export interface ContentMeta {
+  id: string;
+  name: string;
+  source: ContentSource;
+  sourceUrl?: string;
+  book?: string;
+}
+
+export interface Race extends ContentMeta {
+  kind: 'race';
+  size: 'tiny' | 'small' | 'medium' | 'large';
+  speed: number;
+  description?: string;
+  features: Feature[];
+  subraces?: Subrace[];
+}
+
+export interface Subrace {
+  id: string;
+  name: string;
+  features: Feature[];
+}
+
+export interface ClassLevel {
+  level: number;
+  /** id умений из features, которые открываются на этом уровне */
+  features: string[];
+  /** Колонки таблицы класса: «Ярость: 2», «Известные заговоры: 3» */
+  columns?: Record<string, string>;
+}
+
+export interface Spellcasting {
+  ability: Ability;
+  /** full — волшебник, жрец; half — паладин, следопыт; third — мистический рыцарь; pact — колдун */
+  progression: 'full' | 'half' | 'third' | 'pact';
+  /** prepared — готовит из списка класса; known — знает фиксированное число */
+  mode: 'prepared' | 'known';
+  ritual?: boolean;
+}
+
+export interface CharacterClass extends ContentMeta {
+  kind: 'class';
+  hitDie: number;
+  saves: Ability[];
+  armor: string[];
+  weapons: string[];
+  tools: string[];
+  skillChoices: { pick: number; from: Skill[] };
+  equipment?: string;
+  description?: string;
+  spellcasting?: Spellcasting;
+  features: Feature[];
+  levels: ClassLevel[];
+  subclassLevel: number;
+  subclasses: Subclass[];
+}
+
+export interface Subclass {
+  id: string;
+  name: string;
+  description?: string;
+  features: Feature[];
+  spellcasting?: Spellcasting;
+}
+
+export interface Spell extends ContentMeta {
+  kind: 'spell';
+  level: number;
+  school: SpellSchool;
+  castingTime: string;
+  range: string;
+  components: { v: boolean; s: boolean; m?: string };
+  duration: string;
+  concentration: boolean;
+  ritual: boolean;
+  classes: string[];
+  description: string;
+  higherLevels?: string;
+  /** Формула урона/лечения для кнопки «сотворить», например «8к6» */
+  damage?: { dice: string; type?: DamageType; perSlotAbove?: string };
+  heal?: { dice: string; perSlotAbove?: string };
+  save?: Ability;
+  attack?: 'melee' | 'ranged';
+}
+
+export interface Item extends ContentMeta {
+  kind: 'item';
+  category: 'weapon' | 'armor' | 'shield' | 'gear' | 'tool' | 'magic' | 'consumable' | 'other';
+  weight?: number;
+  cost?: { amount: number; coin: Coin };
+  description?: string;
+  rarity?: string;
+  attunement?: boolean;
+  weapon?: {
+    damage: string;
+    damageType: DamageType;
+    versatile?: string;
+    properties: string[];
+    range?: string;
+    martial: boolean;
+    ranged: boolean;
+  };
+  armor?: { base: number; dexCap: number | null; type: 'light' | 'medium' | 'heavy'; stealthDisadvantage?: boolean; strength?: number };
+  shield?: { bonus: number };
+  effects?: Effect[];
+}
+
+export interface MonsterAction {
+  name: string;
+  description: string;
+  attackBonus?: number;
+  damage?: string;
+  damageType?: DamageType;
+}
+
+export interface Monster extends ContentMeta {
+  kind: 'monster';
+  size: string;
+  type: string;
+  alignment?: string;
+  ac: number;
+  acNote?: string;
+  hp: number;
+  hpFormula?: string;
+  speed: string;
+  abilities: Record<Ability, number>;
+  saves?: Partial<Record<Ability, number>>;
+  skills?: Partial<Record<Skill, number>>;
+  resistances?: DamageType[];
+  immunities?: DamageType[];
+  vulnerabilities?: DamageType[];
+  conditionImmunities?: Condition[];
+  senses?: string;
+  languages?: string;
+  cr: string;
+  xp?: number;
+  traits: MonsterAction[];
+  actions: MonsterAction[];
+  reactions?: MonsterAction[];
+  legendary?: MonsterAction[];
+}
+
+export type Content = Race | CharacterClass | Spell | Item | Monster;
+
+// ---------- Персонаж ----------
+
+export type Money = Record<Coin, number>;
+
+export interface InventoryEntry {
+  id: string;
+  itemId?: string;
+  /** Предмет без карточки в каталоге: просто название */
+  name?: string;
+  qty: number;
+  equipped?: boolean;
+  attuned?: boolean;
+  notes?: string;
+}
+
+export interface CharacterState {
+  hp: number;
+  tempHp: number;
+  /** Временное изменение максимума (например, от некротического урона) */
+  maxHpModifier: number;
+  deathSaves: { success: number; failure: number };
+  dead: boolean;
+  conditions: Condition[];
+  exhaustion: number;
+  /** Потраченные кости хитов по размеру кости: { 8: 2 } */
+  hitDiceUsed: Record<number, number>;
+  /** Использованные ячейки по уровню: { 1: 2, 3: 1 } */
+  spellSlotsUsed: Record<number, number>;
+  pactSlotsUsed: number;
+  /** Потраченные заряды ресурсов по id ресурса */
+  resourcesUsed: Record<string, number>;
+  concentration?: string;
+  inspiration: boolean;
+  money: Money;
+  xp: number;
+}
+
+export interface Character {
+  id: string;
+  name: string;
+  raceId?: string;
+  subraceId?: string;
+  classes: { classId: string; level: number; subclassId?: string }[];
+  baseAbilities: Record<Ability, number>;
+  /** Выборы игрока: ключ — id эффекта choice / ability_choice, значение — выбранные id */
+  choices: Record<string, string[]>;
+  /** Ручные переопределения вычисленных значений: { ac: 18, 'skill.stealth': 7 } */
+  overrides: Record<string, number>;
+  /** Дополнительные умения и черты, добавленные вручную */
+  extraFeatures: Feature[];
+  featIds: string[];
+  /** id заклинаний: известные и подготовленные */
+  spellsKnown: string[];
+  spellsPrepared: string[];
+  inventory: InventoryEntry[];
+  /** Включённые опциональные умения (id) */
+  optionalFeatures: string[];
+  hpRolls: number[];
+  background?: string;
+  alignment?: string;
+  appearance?: string;
+  backstory?: string;
+  notes?: string;
+  languages: string[];
+  state: CharacterState;
+}
+
+export interface ContentIndex {
+  races: Map<string, Race>;
+  classes: Map<string, CharacterClass>;
+  spells: Map<string, Spell>;
+  items: Map<string, Item>;
+  feats: Map<string, Feature>;
+}
