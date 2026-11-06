@@ -1,4 +1,5 @@
 import { PGlite } from '@electric-sql/pglite';
+import { mkdirSync } from 'node:fs';
 import postgres from 'postgres';
 
 /**
@@ -42,6 +43,8 @@ function fromPostgres(sql: postgres.Sql | postgres.TransactionSql): Db {
 }
 
 export async function openDb(opts: { url?: string; dataDir?: string } = {}): Promise<Db> {
+  // PGlite создаёт только последнюю папку пути: родительские создаём сами (первый запуск на чистой машине)
+  if (!opts.url && opts.dataDir && !opts.dataDir.startsWith('memory://')) mkdirSync(opts.dataDir, { recursive: true });
   const db = opts.url ? fromPostgres(postgres(opts.url, { max: 10 })) : fromPglite(new PGlite(opts.dataDir));
   await migrate(db);
   return db;
