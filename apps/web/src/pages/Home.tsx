@@ -1,10 +1,10 @@
-import { useMutation, useQuery } from '@tanstack/react-query';
-import { DoorOpen, Plus, Shield, Users } from 'lucide-react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { DoorOpen, Plus, Shield, Trash2, Users } from 'lucide-react';
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
 import { RoomModal } from '../components/RoomModal';
-import { Empty, Field, Loading, Modal, Rule, useToast } from '../components/ui';
+import { ConfirmButton, Empty, Field, Loading, Modal, Rule, useToast } from '../components/ui';
 import { plural, timeAgo } from '../lib/format';
 
 interface CharacterSummary {
@@ -42,6 +42,12 @@ export function HomePage() {
     setName('');
   };
   const onError = (e: Error) => toast(e.message, 'error');
+  const qc = useQueryClient();
+  const delChar = useMutation({
+    mutationFn: (id: string) => api(`/characters/${id}`, { method: 'DELETE' }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['characters'] }),
+    onError,
+  });
 
   const createChar = useMutation({
     mutationFn: () => api<{ id: string }>('/characters', { body: { name } }),
@@ -81,7 +87,15 @@ export function HomePage() {
             <Link key={c.id} to={`/characters/${c.id}`} className="card-link">
               <div className="row between">
                 <h3>{c.name}</h3>
-                {c.level > 0 && <span className="chip num">{c.level} ур.</span>}
+                <span className="row" style={{ gap: 6 }}>
+                  {c.level > 0 && <span className="chip num">{c.level} ур.</span>}
+                  {/* Клик по кнопке не должен открывать лист: карточка — ссылка */}
+                  <span className="card-del" onClickCapture={(e) => e.preventDefault()}>
+                    <ConfirmButton className="btn ghost xs" confirm="Удалить?" onConfirm={() => delChar.mutate(c.id)}>
+                      <Trash2 size={14} aria-label="Удалить персонажа" />
+                    </ConfirmButton>
+                  </span>
+                </span>
               </div>
               <div className="muted">{[c.race, c.classes].filter(Boolean).join(' · ') || 'Не настроен'}</div>
               <div className="row" style={{ marginTop: 12, gap: 14 }}>

@@ -548,3 +548,6 @@ button.list-item { width: 100%; border-left: 0; border-right: 0; border-top: 0; 
 .hero-option input[type='radio'] { margin-top: 3px; accent-color: var(--accent); }
 .code-input { letter-spacing: .3em; font-weight: 600; text-align: center; font-size: 18px; height: 44px; }
 @media (max-width: 480px) { .role-pick { grid-template-columns: 1fr; } }
+.card-del .btn { color: var(--muted); }
+.card-del .btn:hover { color: var(--danger); }
+@media (hover: hover) { .card-link .card-del { opacity: 0; transition: opacity .12s; } .card-link:hover .card-del, .card-link:focus-within .card-del { opacity: 1; } }
