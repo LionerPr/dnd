@@ -33,7 +33,7 @@ import { ConfirmButton, Empty, Field, Loading, Modal, NumberInput, Segmented, us
 import { useAuth } from '../lib/auth';
 import { conditionName, plural, signed, timeAgo } from '../lib/format';
 import { useRoller } from '../lib/hooks';
-import { getSocket } from '../lib/socket';
+import { isConnected, subscribe } from '../lib/socket';
 
 type Target = { kind: 'character' | 'npc'; id: string };
 type Cmd = { type: string; [k: string]: unknown };
@@ -50,15 +50,14 @@ function useRoom(id: string) {
   const q = useQuery({ queryKey: key, queryFn: () => api<Snapshot>(`/campaigns/${id}`) });
 
   useEffect(() => {
-    const s = getSocket();
     const patch = (fn: (s: Snapshot) => Snapshot) => qc.setQueryData<Snapshot>(key, (old) => (old ? fn(old) : old));
-    const join = () => {
-      s.emit('join', id);
-      qc.invalidateQueries({ queryKey: key });
-    };
-    if (s.connected) s.emit('join', id);
+    let first = true;
     const handlers: Record<string, (p: any) => void> = {
-      connect: join,
+      // Первое подключение — данные уже грузятся запросом; после обрыва — перечитать всё
+      connect: () => {
+        if (!first) qc.invalidateQueries({ queryKey: key });
+        first = false;
+      },
       character: (view: CharacterView) =>
         patch((x) => {
           const rest = x.characters.filter((c) => c.id !== view.id);
@@ -82,10 +81,7 @@ function useRoom(id: string) {
         nav('/');
       },
     };
-    for (const [ev, fn] of Object.entries(handlers)) s.on(ev, fn);
-    return () => {
-      for (const [ev, fn] of Object.entries(handlers)) s.off(ev, fn);
-    };
+    return subscribe(`campaign/${id}`, handlers);
   }, [id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return q;
@@ -101,7 +97,7 @@ export function CampaignPage() {
   const [modal, setModal] = useState<null | { type: 'settings' } | { type: 'npc' } | { type: 'achievement'; a?: Achievement } | { type: 'award'; a: Achievement } | { type: 'character'; id: string } | { type: 'statblock'; npc: Npc } | { type: 'attach' }>(null);
   const onError = (e: Error) => toast(e.message, 'error');
   const refresh = () => {
-    if (!getSocket().connected) qc.invalidateQueries({ queryKey: ['campaign', id] });
+    if (!isConnected(`campaign/${id}`)) qc.invalidateQueries({ queryKey: ['campaign', id] });
   };
 
   const command = useMutation({

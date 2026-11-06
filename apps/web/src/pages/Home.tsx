@@ -1,8 +1,9 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Crown, DoorOpen, Plus, Shield, Users } from 'lucide-react';
+import { useMutation, useQuery } from '@tanstack/react-query';
+import { DoorOpen, Plus, Shield, Users } from 'lucide-react';
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
+import { RoomModal } from '../components/RoomModal';
 import { Empty, Field, Loading, Modal, Rule, useToast } from '../components/ui';
 import { plural, timeAgo } from '../lib/format';
 
@@ -31,18 +32,14 @@ interface CampaignSummary {
 export function HomePage() {
   const nav = useNavigate();
   const toast = useToast();
-  const qc = useQueryClient();
   const chars = useQuery({ queryKey: ['characters'], queryFn: () => api<{ characters: CharacterSummary[] }>('/characters') });
   const camps = useQuery({ queryKey: ['campaigns'], queryFn: () => api<{ campaigns: CampaignSummary[] }>('/campaigns') });
-  const [modal, setModal] = useState<null | 'character' | 'campaign' | 'join'>(null);
+  const [modal, setModal] = useState<null | 'character' | 'room'>(null);
   const [name, setName] = useState('');
-  const [code, setCode] = useState('');
-  const [joinChar, setJoinChar] = useState('');
 
   const close = () => {
     setModal(null);
     setName('');
-    setCode('');
   };
   const onError = (e: Error) => toast(e.message, 'error');
 
@@ -51,20 +48,6 @@ export function HomePage() {
     onSuccess: (r) => nav(`/characters/${r.id}?tab=build`),
     onError,
   });
-  const createCampaign = useMutation({
-    mutationFn: () => api<{ campaign: { id: string } }>('/campaigns', { body: { name } }),
-    onSuccess: (r) => nav(`/campaigns/${r.campaign.id}`),
-    onError,
-  });
-  const join = useMutation({
-    mutationFn: () => api<{ campaign: { id: string } }>('/campaigns/join', { body: { code, characterId: joinChar || undefined } }),
-    onSuccess: (r) => {
-      qc.invalidateQueries({ queryKey: ['campaigns'] });
-      nav(`/campaigns/${r.campaign.id}`);
-    },
-    onError,
-  });
-
   if (chars.isLoading || camps.isLoading) return <Loading />;
   const characters = chars.data?.characters ?? [];
   const campaigns = camps.data?.campaigns ?? [];
@@ -118,15 +101,12 @@ export function HomePage() {
 
       <Rule>Кампании</Rule>
       <div className="row wrap" style={{ marginBottom: 16 }}>
-        <button className="btn" onClick={() => setModal('campaign')}>
-          <Crown /> Стать мастером
-        </button>
-        <button className="btn" onClick={() => setModal('join')}>
-          <DoorOpen /> Войти по коду
+        <button className="btn primary" onClick={() => setModal('room')}>
+          <DoorOpen /> Создать или войти в комнату
         </button>
       </div>
       {campaigns.length === 0 ? (
-        <p className="muted">Создайте кампанию как мастер или войдите в чужую по коду приглашения.</p>
+        <p className="muted">Создайте комнату мастером или войдите приключенцем по коду от мастера.</p>
       ) : (
         <div className="cards">
           {campaigns.map((c) => (
@@ -164,65 +144,7 @@ export function HomePage() {
           </Field>
         </Modal>
       )}
-      {modal === 'campaign' && (
-        <Modal
-          title="Новая кампания"
-          onClose={close}
-          footer={
-            <>
-              <button className="btn ghost" onClick={close}>
-                Отмена
-              </button>
-              <button className="btn primary" disabled={!name.trim() || createCampaign.isPending} onClick={() => createCampaign.mutate()}>
-                Создать
-              </button>
-            </>
-          }
-        >
-          <Field label="Название" hint="Игроки войдут по коду приглашения, который появится в комнате">
-            <input className="input" autoFocus value={name} onChange={(e) => setName(e.target.value)} />
-          </Field>
-        </Modal>
-      )}
-      {modal === 'join' && (
-        <Modal
-          title="Войти в кампанию"
-          onClose={close}
-          footer={
-            <>
-              <button className="btn ghost" onClick={close}>
-                Отмена
-              </button>
-              <button className="btn primary" disabled={code.trim().length < 6 || join.isPending} onClick={() => join.mutate()}>
-                Войти
-              </button>
-            </>
-          }
-        >
-          <Field label="Код приглашения" hint="6 символов, его даёт мастер">
-            <input
-              className="input"
-              autoFocus
-              value={code}
-              maxLength={6}
-              onChange={(e) => setCode(e.target.value.toUpperCase())}
-              style={{ letterSpacing: '0.3em', fontWeight: 600, textAlign: 'center', fontSize: 18, height: 44 }}
-            />
-          </Field>
-          <Field label="Каким героем играете">
-            <select className="select" value={joinChar} onChange={(e) => setJoinChar(e.target.value)}>
-              <option value="">Выберу позже</option>
-              {characters
-                .filter((c) => !c.campaignId)
-                .map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
-                ))}
-            </select>
-          </Field>
-        </Modal>
-      )}
+      {modal === 'room' && <RoomModal characters={characters} onClose={close} />}
     </main>
   );
 }

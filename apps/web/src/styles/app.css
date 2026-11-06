@@ -526,3 +526,25 @@ button.list-item { width: 100%; border-left: 0; border-right: 0; border-top: 0; 
 .save-bar { position: sticky; bottom: 0; display: flex; align-items: center; gap: 12px; padding: 12px 0; margin-top: 16px; background: var(--bg); border-top: 1px solid var(--line); z-index: 5; }
 
 @media (max-width: 560px) { .topbar .user-name { display: none; } .nav { gap: 0; } }
+
+/* Выбор роли при входе в комнату */
+.role-pick { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.role-card {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 6px; text-align: left;
+  padding: 16px; border: 1px solid var(--line); border-radius: 10px; background: transparent; color: inherit;
+  cursor: pointer; font: inherit; transition: border-color .15s, background .15s;
+}
+.role-card:hover, .role-card:focus-visible { border-color: var(--accent); background: var(--accent-soft); outline: none; }
+.role-card svg { color: var(--accent); width: 22px; height: 22px; }
+.role-card b { font-size: 16px; }
+.role-card span { font-size: 13px; opacity: .75; line-height: 1.35; }
+.hero-pick { display: flex; flex-direction: column; gap: 6px; max-height: 300px; overflow: auto; }
+.hero-option {
+  display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px; border: 1px solid var(--line);
+  border-radius: 8px; cursor: pointer;
+}
+.hero-option.on { border-color: var(--accent); }
+.hero-option > span { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.hero-option input[type='radio'] { margin-top: 3px; accent-color: var(--accent); }
+.code-input { letter-spacing: .3em; font-weight: 600; text-align: center; font-size: 18px; height: 44px; }
+@media (max-width: 480px) { .role-pick { grid-template-columns: 1fr; } }

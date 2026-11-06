@@ -4,26 +4,23 @@ import { useCallback, useEffect, useRef } from 'react';
 import { api, type CharacterView, type Command, type ContentRow } from '../api/client';
 import { useToast } from '../components/ui';
 import { RollToast } from '../components/RollToast';
-import { getSocket } from './socket';
+import { subscribe } from './socket';
 
 export function useCharacter(id: string) {
   const qc = useQueryClient();
   const q = useQuery({ queryKey: ['character', id], queryFn: () => api<CharacterView>(`/characters/${id}`) });
-  useEffect(() => {
-    const s = getSocket();
-    const watch = () => s.emit('watch-character', id);
-    watch();
-    s.on('connect', watch);
-    const onChar = (view: CharacterView) => {
-      if (view.id !== id) return;
-      qc.setQueryData<CharacterView>(['character', id], (old) => (old ? { ...old, ...view } : old));
-    };
-    s.on('character', onChar);
-    return () => {
-      s.off('connect', watch);
-      s.off('character', onChar);
-    };
-  }, [id, qc]);
+  useEffect(
+    () =>
+      subscribe(`character/${id}`, {
+        character: (view: CharacterView) => {
+          if (view.id !== id) return;
+          qc.setQueryData<CharacterView>(['character', id], (old) => (old ? { ...old, ...view } : old));
+        },
+        // После обрыва связи — перечитать лист
+        connect: () => qc.invalidateQueries({ queryKey: ['character', id] }),
+      }),
+    [id, qc],
+  );
   return q;
 }
 

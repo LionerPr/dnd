@@ -1,5 +1,5 @@
 import { average, computeSheet, roll, type Monster } from '@dnd/rules-engine';
-import type { FastifyInstance } from 'fastify';
+import type { Api } from '../http.js';
 import { customAlphabet, nanoid } from 'nanoid';
 import { z } from 'zod';
 import type { AppDeps } from '../app.js';
@@ -26,6 +26,7 @@ import {
   broadcastNpc,
   characterView,
   emitEvent,
+  freshCharacter,
   logEvent,
   namesFor,
   runCharacterCommand,
@@ -100,7 +101,7 @@ function npcFromMonster(m: Monster, name: string, rollHp: boolean, rng: () => nu
   };
 }
 
-export function campaignRoutes(api: FastifyInstance, deps: AppDeps) {
+export function campaignRoutes(api: Api, deps: AppDeps) {
   const { db, rt } = deps;
 
   async function snapshot(campaignId: string, user: User) {
@@ -208,21 +209,31 @@ export function campaignRoutes(api: FastifyInstance, deps: AppDeps) {
 
   api.post('/campaigns/join', async (req) => {
     const user = requireUser(req);
-    const { code, characterId } = z.object({ code: z.string().min(4).max(12), characterId: z.string().optional() }).parse(req.body);
+    const body = z
+      .object({ code: z.string().min(4).max(12), characterId: z.string().optional(), newCharacter: z.string().trim().min(1).max(100).optional() })
+      .parse(req.body);
+    const { code } = body;
+    let characterId = body.characterId;
     const rows = await db.query<{ id: string }>(`SELECT id FROM campaigns WHERE invite_code = $1`, [code.trim().toUpperCase()]);
     const camp = rows[0];
     if (!camp) throw new HttpError(404, 'Кампания с таким кодом не найдена');
     const role = await memberRole(db, camp.id, user.id);
     if (!role) await db.query(`INSERT INTO campaign_members (campaign_id, user_id, role) VALUES ($1, $2, 'player')`, [camp.id, user.id]);
+    // Новый герой создаётся только после проверки кода, чтобы не плодить лишних
+    if (!characterId && body.newCharacter) {
+      characterId = nanoid(12);
+      await db.query(`INSERT INTO characters (id, owner_id, data) VALUES ($1, $2, $3)`, [characterId, user.id, freshCharacter(characterId, body.newCharacter)]);
+    }
     if (characterId) {
       const ch = await getCharacter(db, characterId);
       if (ch.owner_id !== user.id) throw forbidden();
+      if (ch.campaign_id && ch.campaign_id !== camp.id) rt.all(ch.campaign_id, 'character-removed', { id: ch.id });
       await db.query(`UPDATE characters SET campaign_id = $2 WHERE id = $1`, [characterId, camp.id]);
       await broadcastCharacter(deps, { ...ch, campaign_id: camp.id });
     }
     const snap = await snapshot(camp.id, user);
     rt.all(camp.id, 'campaign-changed', {});
-    return snap;
+    return { ...snap, characterId: characterId ?? null };
   });
 
   api.post('/campaigns/:id/characters', async (req) => {
@@ -610,7 +621,7 @@ export function campaignRoutes(api: FastifyInstance, deps: AppDeps) {
     const user = requireUser(req);
     const { id } = req.params as { id: string };
     const result = await db.tx(async (tx) => {
-      const rows = await tx.query<EventRow & { before: unknown }>(`SELECT *, id::text AS id FROM events WHERE id = $1`, [id]);
+      const rows = await tx.query<EventRow & { before: unknown }>(`SELECT id::text, campaign_id, actor_id, target_kind, target_id, type, summary, before, undone FROM events WHERE id = $1`, [Number(id)]);
       const ev = rows[0];
       if (!ev || !ev.before || ev.undone) throw new HttpError(400, 'Это действие нельзя отменить');
       const role = ev.campaign_id ? await memberRole(tx, ev.campaign_id, user.id) : null;
