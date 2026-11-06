@@ -64,10 +64,29 @@ const set = (patch: Partial<CatalogJob>) => {
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /** Обойти карту сайта и сложить разделы в общую библиотеку. Пока идёт загрузка, вкладку надо держать открытой. */
-export async function startCatalog(kinds: ImportKind[], onDone?: () => void) {
+/**
+ * Самодельные (homebrew) и «мультивселенная»: в карте сайта их нет целиком,
+ * поэтому берём ссылки со страниц-списков /race/ и /class/.
+ */
+async function extraUrls(kinds: ImportKind[]) {
+  const out: { kind: ImportKind; url: string }[] = [];
+  for (const kind of kinds) {
+    if (kind === 'spell') continue;
+    const html = await fetchText(`/import/page?url=${encodeURIComponent(`https://dnd.su/${kind}/`)}`);
+    const seen = new Set<string>();
+    for (const m of html.matchAll(new RegExp(`href="(/(?:homebrew|multiverse)/${kind}/\\d+-[^"/]+/)"`, 'g'))) {
+      if (seen.has(m[1]!)) continue;
+      seen.add(m[1]!);
+      out.push({ kind, url: `https://dnd.su${m[1]}` });
+    }
+  }
+  return out;
+}
+
+export async function startCatalog(kinds: ImportKind[], onDone?: () => void, homebrew = false) {
   if (job?.status === 'running') return;
   const m = await importer();
-  const items = m.catalogUrls(await fetchText('/import/sitemap'), kinds);
+  const items = homebrew ? await extraUrls(kinds) : m.catalogUrls(await fetchText('/import/sitemap'), kinds);
   job = { kinds, total: items.length, done: 0, failed: [], status: 'running' };
   notify();
   for (const { url } of items) {

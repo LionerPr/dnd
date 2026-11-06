@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { parseClass, parseRace, parseSpell } from './dndsu.js';
+import { detectKind, parseClass, parseRace, parseSpell } from './dndsu.js';
 
 // Снимки страниц dnd.su не хранятся в репозитории; положите их в test-fixtures/, чтобы прогнать тест.
 const fx = (name: string) => resolve(import.meta.dirname, '../test-fixtures', name);
@@ -58,5 +58,31 @@ describe.skipIf(!hasMore)('разбор dnd.su: заклинания и мона
     const ki = m.features.flatMap((f) => f.effects ?? []).find((e) => e.type === 'resource');
     expect(ki).toMatchObject({ id: 'ki', recharge: 'short' });
     expect(m.levels[4]!.columns).toMatchObject({ 'Очки ци': '5' });
+  });
+});
+
+describe('самодельные страницы (homebrew)', () => {
+  it.skipIf(!existsSync(fx('545-oniborne.html')))('раса с простой разметкой и скрытыми разновидностями', () => {
+    const r = parseRace(readFileSync(fx('545-oniborne.html'), 'utf8'), 'https://dnd.su/homebrew/race/545-oniborne/');
+    expect(r.name).toBe('Онирождённый');
+    expect(r.book).toBe("Ryoko's guide to the yokai realms");
+    expect(r.features.map((f) => f.name)).toContain('Мощное телосложение');
+    expect(r.features.find((f) => f.name === 'Увеличение характеристик')?.effects).toEqual([{ type: 'ability_bonus', ability: 'con', value: 2 }]);
+    expect(r.subraces?.map((s) => s.name)).toEqual(['Красный онирождённый', 'Синий онирождённый', 'Зелёный онирождённый']);
+    expect(r.subraces?.[0]?.features[0]?.effects?.[0]).toMatchObject({ type: 'ability_bonus', ability: 'wis', value: 1 });
+  });
+
+  it.skipIf(!existsSync(fx('195-blood-hunter.html')))('класс: умения по уровням и ордена', () => {
+    const c = parseClass(readFileSync(fx('195-blood-hunter.html'), 'utf8'), 'https://dnd.su/homebrew/class/195-blood-hunter/');
+    expect(c.name).toBe('Кровавый охотник');
+    expect(c.features.find((f) => f.name === 'Охотничья погибель')?.level).toBe(1);
+    expect(c.features.find((f) => f.name === 'Дополнительная атака')?.level).toBe(5);
+    expect(c.subclasses.map((s) => s.name)).toContain('Орден призрачных убийц');
+  });
+
+  it('раздел определяется и для homebrew/multiverse', () => {
+    expect(detectKind('https://dnd.su/homebrew/race/545-oniborne/')).toBe('race');
+    expect(detectKind('https://dnd.su/multiverse/race/193-reborn/')).toBe('race');
+    expect(detectKind('https://dnd.su/homebrew/class/12-x/')).toBe('class');
   });
 });

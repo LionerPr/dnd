@@ -19,7 +19,7 @@ const ITEM_CATEGORIES: Record<string, string> = {
 
 function rowMeta(r: ContentRow) {
   const d = r.data ?? {};
-  const book = bookShort(d.book);
+  const book = [/\/homebrew\//.test(d.sourceUrl ?? '') && 'самодельное', bookShort(d.book)].filter(Boolean).join(', ');
   const meta = rowKindMeta(r, d);
   return [book, meta].filter(Boolean).join(' · ');
 }
@@ -298,7 +298,8 @@ function CatalogPanel() {
   const j = useCatalogJob();
   const running = j?.status === 'running';
   const start = useMutation({
-    mutationFn: (kinds: ImportKind[]) => startCatalog(kinds, () => qc.invalidateQueries({ queryKey: ['content'] })),
+    mutationFn: ({ kinds, homebrew }: { kinds: ImportKind[]; homebrew?: boolean }) =>
+      startCatalog(kinds, () => qc.invalidateQueries({ queryKey: ['content'] }), homebrew),
     onError: (e: Error) => toast(e.message, 'error'),
   });
   const stop = { mutate: stopCatalog };
@@ -341,17 +342,20 @@ function CatalogPanel() {
             </button>
           ) : (
             <>
-              <button className="btn" disabled={start.isPending} onClick={() => start.mutate(['race'])}>
+              <button className="btn" disabled={start.isPending} onClick={() => start.mutate({ kinds: ['race'] })}>
                 Все расы
               </button>
-              <button className="btn" disabled={start.isPending} onClick={() => start.mutate(['class'])}>
+              <button className="btn" disabled={start.isPending} onClick={() => start.mutate({ kinds: ['class'] })}>
                 Все классы
               </button>
-              <button className="btn" disabled={start.isPending} onClick={() => start.mutate(['spell'])}>
+              <button className="btn" disabled={start.isPending} onClick={() => start.mutate({ kinds: ['spell'] })}>
                 Все заклинания
               </button>
-              <button className="btn primary" disabled={start.isPending} onClick={() => start.mutate(['race', 'class', 'spell'])}>
+              <button className="btn primary" disabled={start.isPending} onClick={() => start.mutate({ kinds: ['race', 'class', 'spell'] })}>
                 Всё сразу
+              </button>
+              <button className="btn" disabled={start.isPending} onClick={() => start.mutate({ kinds: ['race', 'class'], homebrew: true })}>
+                Самодельные расы и классы
               </button>
             </>
           )}

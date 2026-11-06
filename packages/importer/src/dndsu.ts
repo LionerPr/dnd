@@ -52,6 +52,41 @@ function cardTitle($: $) {
   return { name: m ? m[1]!.trim() : raw, en: m?.[2]?.trim(), book: pageBook($) };
 }
 
+/**
+ * Самодельные (homebrew) страницы размечены проще: <p><strong><em>Название.</em></strong> текст</p>.
+ * Абзацы внутри скрытых блоков (.hide-wrapper) — это разновидности, их разбираем отдельно.
+ */
+function looseFeatures($: $, root: cheerio.Cheerio<AnyNode>, prefix: string, inside = false): Feature[] {
+  const out: Feature[] = [];
+  root.find('p').each((_, p) => {
+    const $p = $(p);
+    if (!inside && $p.closest('.hide-wrapper').length) return;
+    const head = $p.children('strong, b').first();
+    if (!head.length || !$p.text().trim().startsWith(head.text().trim().slice(0, 3))) return;
+    const name = text(head.text()).replace(/[.:]\s*$/, '');
+    if (!name || name.length > 60) return;
+    const body = text($p.text()).slice(text(head.text()).length).trim();
+    const id = `${prefix}.${out.length}`;
+    out.push({ id, name, description: body, effects: effectsFromFeature(name, body, id, $p, $) });
+  });
+  return out;
+}
+
+/** Разновидности на самодельных страницах: заголовок h2.bigSectionTitle и скрытый блок за ним. */
+function looseSubraces($: $, slug: string): Subrace[] | undefined {
+  const heads = $('h2.bigSectionTitle');
+  const subs: Subrace[] = [];
+  heads.each((i, h) => {
+    const $h = $(h);
+    const body = $h.next('.hide-wrapper');
+    if (!body.length) return;
+    const id = `v${i}`;
+    const features = looseFeatures($, body, `${slug}.${id}`, true);
+    if (features.length) subs.push({ id, name: text($h.text()), features });
+  });
+  return subs.length ? subs : undefined;
+}
+
 /** Книга-источник страницы: «Источник: «Player's Handbook»» в шапке карточки. */
 function pageBook($: $): string | undefined {
   const label = $('strong')
@@ -92,7 +127,7 @@ function blockText($: $, nodes: cheerio.Cheerio<AnyNode>): string {
 export function effectsFromFeature(name: string, body: string, featureId: string, $html?: cheerio.Cheerio<AnyNode>, $?: $): Effect[] {
   const n = name.toLowerCase();
   const effects: Effect[] = [];
-  if (n.startsWith('увеличение характеристик')) {
+  if (n.startsWith('увеличение характеристик') || n.startsWith('повышение характеристик')) {
     for (const m of body.matchAll(/значение\s+(?:вашего|вашей|вашего\s+показателя)?\s*([А-ЯЁа-яё]+)\s+увеличивается\s+на\s+(\d)/gi)) {
       const a = abilityFromWord(m[1]!);
       if (a) effects.push({ type: 'ability_bonus', ability: a, value: Number(m[2]) });
@@ -165,7 +200,9 @@ function sizeFrom(body: string): Race['size'] {
 
 function featuresFromParagraphs($: $, root: cheerio.Cheerio<AnyNode>, prefix: string): Feature[] {
   const out: Feature[] = [];
-  root.find('p.article-body__feature').each((i, p) => {
+  const marked = root.find('p.article-body__feature');
+  if (!marked.length) return looseFeatures($, root, prefix);
+  marked.each((i, p) => {
     const $p = $(p);
     const name = text($p.find('.article-body__feature-name').first().text());
     const body = text($p.text()).replace(new RegExp(`^${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*\\.?\\s*`), '');
@@ -179,7 +216,7 @@ export function parseRace(html: string, url: string): Race {
   const $ = cheerio.load(html);
   const { name, en, book } = cardTitle($);
   const slug = slugOf(url);
-  const article = $('.card__article-body, .article-body').first().length ? $('.card__article-body, .article-body').first() : $('body');
+  const article = $('div.card__article-body, div.article-body').first().length ? $('div.card__article-body, div.article-body').first() : $('body');
   const variants = $('div.multiforo');
   let features: Feature[] = [];
   let subraces: Subrace[] | undefined;
@@ -195,6 +232,7 @@ export function parseRace(html: string, url: string): Race {
       .get();
   } else {
     features = featuresFromParagraphs($, article, slug);
+    if (!article.find('p.article-body__feature').length) subraces = looseSubraces($, slug);
   }
   const all = [...features, ...(subraces?.[0]?.features ?? [])];
   const sizeFeature = all.find((f) => f.name.toLowerCase() === 'размер');
@@ -357,6 +395,23 @@ export function parseClass(html: string, url: string): CharacterClass {
     const effects = rules.effects?.[fid] ?? [];
     features.push({ id: `${slug}.${fid}`, name: title(h3.text()), description, level, effects, optional: h3.closest('.TCE-feature-on').length > 0 || undefined });
   });
+  // Самодельные классы: умение — заголовок h3, за которым «N-й уровень, умение …»; h3 без уровня — часть описания
+  const loose = features.length === 0;
+  if (loose) {
+    const isFeature = (h3: cheerio.Cheerio<AnyNode>) => levelFromEm(text(h3.next('p').find('em').first().text())) !== undefined;
+    $('h3').each((i, el) => {
+      const h3 = $(el);
+      if (h3.closest('.hide-wrapper').length || !isFeature(h3)) return;
+      const nodes: AnyNode[] = [];
+      let n = h3.next();
+      while (n.length && !n.is('h2') && !(n.is('h3') && isFeature(n))) {
+        nodes.push(n[0]!);
+        n = n.next();
+      }
+      const level = levelFromEm(text(h3.next('p').find('em').first().text()));
+      features.push({ id: `${slug}.f${i}`, name: title(h3.text()), description: blockText($, $(nodes.slice(1))), level, effects: [] });
+    });
+  }
   // Ссылки в таблице — на полные id
   for (const l of levels) l.features = l.features.map((f) => `${slug}.${f}`);
   // Быстрое передвижение варвара: +10 футов к скорости — эффект прибавки, а не абсолютное значение
@@ -370,9 +425,11 @@ export function parseClass(html: string, url: string): CharacterClass {
     const h2 = $(span).closest('h2');
     if ($('h2').index(h2) > unofficialIndex) return;
     const sid = $(span).attr('id')!;
-    if (/^(ua|hb)\./.test(sid) || !sid.includes('.')) return;
+    if (/^(ua|hb)\./.test(sid) || (!sid.includes('.') && !loose)) return;
     const wrapper = h2.next('.hide-wrapper');
     if (!wrapper.length) return;
+    // У самодельных классов под такими заголовками бывают и не подклассы — берём только блоки с умениями по уровням
+    if (loose && !wrapper.children('h3').toArray().some((h) => levelFromEm(text($(h).next('p').find('em').first().text())) !== undefined)) return;
     const subFeatures: Feature[] = [];
     wrapper.children('h3').each((i, h3el) => {
       const h3 = $(h3el);
@@ -416,7 +473,8 @@ export function parseClass(html: string, url: string): CharacterClass {
 }
 
 export function detectKind(url: string): 'race' | 'class' | 'spell' | 'monster' | 'item' | null {
-  const p = new URL(url).pathname;
+  // Самодельное (homebrew) и «мультивселенная» лежат в тех же разделах, только с префиксом
+  const p = new URL(url).pathname.replace(/^\/(homebrew|multiverse)(?=\/)/, '');
   if (p.startsWith('/race/')) return 'race';
   if (p.startsWith('/class/')) return 'class';
   if (p.startsWith('/spells/')) return 'spell';
