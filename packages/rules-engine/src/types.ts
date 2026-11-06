@@ -268,6 +268,8 @@ export interface Character {
   /** Включённые опциональные умения (id) */
   optionalFeatures: string[];
   hpRolls: number[];
+  /** Предыстория из Книги игрока (id из BACKGROUNDS); background — её название или своя */
+  backgroundId?: string;
   background?: string;
   alignment?: string;
   appearance?: string;

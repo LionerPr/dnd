@@ -106,7 +106,7 @@ export function ChoiceRow({ p, sheet, data, update }: { p: Pending; sheet: Sheet
 
 /** Уже сделанные выборы с кнопкой «убрать». */
 export function ChosenList({ data, update, only }: { data: Character; update: Update; only?: (id: string) => boolean }) {
-  const entries = Object.entries(data.choices).filter(([id, v]) => v.length && (!only || only(id)));
+  const entries = Object.entries(data.choices).filter(([id, v]) => v.length && !id.startsWith('kit.') && (!only || only(id)));
   if (!entries.length) return null;
   const label = (id: string) =>
     id.startsWith('class.') ? 'Навыки класса'

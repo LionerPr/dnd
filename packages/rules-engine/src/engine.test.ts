@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   applyDamage,
+  kitItems,
+  parseKit,
   average,
   computeSheet,
   damageCharacter,
@@ -295,5 +297,32 @@ describe('выборы, которые открываются с уровнем'
     expect(s.features.find((f) => f.id === 'rogue.style')!.chosenParts).toEqual(['Оборона']);
     c.classes[0]!.level = 5;
     expect(computeSheet(c, idx).pendingChoices.find((x) => x.kind === 'feature')!.pick).toBe(1);
+  });
+});
+
+describe('создание: источники владений', () => {
+  it('предыстория даёт навыки и выборы; счётчики по источникам', () => {
+    const c: Character = { ...torin(), backgroundId: 'criminal', choices: { 'class.barbarian.skills': ['athletics'] } };
+    const s = computeSheet(c, content);
+    expect(s.skills.find((x) => x.key === 'stealth')!.proficient).toBe(true);
+    expect(s.grants).toContainEqual({ kind: 'skill', id: 'deception', origin: 'Преступник', from: 'background' });
+    expect(s.grants).toContainEqual({ kind: 'tool', id: 'tools.thieves', origin: 'Преступник', from: 'background' });
+    const cls = s.choiceGroups.find((g) => g.from === 'class' && g.kind === 'skill')!;
+    expect(cls).toMatchObject({ pick: 2, chosen: ['athletics'] });
+    expect(s.choiceGroups.find((g) => g.id === 'bg.tools')).toMatchObject({ from: 'background', kind: 'tool', pick: 1, chosen: [] });
+    expect(s.choiceGroups.find((g) => g.id === 'dwarf.tools')).toMatchObject({ from: 'race', origin: 'Дварф' });
+  });
+});
+
+describe('стартовое снаряжение класса', () => {
+  it('варианты а)/б)/в), золото вместо снаряжения', () => {
+    const k = parseKit('Вы начинаете со следующим снаряжением в дополнение к снаряжению, полученному за вашу предысторию:\n• а) рапира, б) длинный меч или в) любое простое оружие\n• а) лютня или б) любой другой музыкальный инструмент\n• Кожаный доспех и кинжал\nЕсли вы откажетесь от этого снаряжения, а также от предметов, предлагаемых вашей предысторией, то вы начнёте игру с 5к4×10 зм для покупки снаряжения.');
+    expect(k.lines).toEqual([{ options: ['рапира', 'длинный меч', 'любое простое оружие'] }, { options: ['лютня', 'любой другой музыкальный инструмент'] }, { options: ['Кожаный доспех и кинжал'] }]);
+    expect(k.gold).toEqual({ dice: '5к4', times: 10 });
+    const monk = parseKit('Вы начинаете со следующим снаряжением: а) короткий меч или б) любое простое оружие а) набор исследователя подземелий или б) набор путешественника 10 дротиков Если вы откажетесь от этого снаряжения, то вы начнёте игру с 5к4 зм для покупки снаряжения.');
+    expect(monk.lines[0]!.options).toEqual(['короткий меч', 'любое простое оружие']);
+    expect(monk.lines.map((l) => l.options)).toEqual([['короткий меч', 'любое простое оружие'], ['набор исследователя подземелий', 'набор путешественника'], ['10 дротиков']]);
+    expect(monk.gold).toEqual({ dice: '5к4', times: 1 });
+    expect(kitItems('два кинжала и 20 болтов')).toEqual([{ name: 'кинжала', qty: 2 }, { name: '20 болтов', qty: 1 }]);
   });
 });

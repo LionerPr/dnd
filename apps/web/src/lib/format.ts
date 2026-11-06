@@ -78,5 +78,7 @@ const PROF_NAMES: Record<string, string> = {
   'tools.cobbler': 'инструменты сапожника', 'tools.glassblower': 'инструменты стеклодува', 'tools.painter': 'инструменты художника',
   'tools.potter': 'инструменты гончара', 'tools.weaver': 'инструменты ткача', 'tools.woodcarver': 'инструменты резчика по дереву',
   'tools.musical': 'музыкальный инструмент', 'tools.gaming': 'игровой набор', 'tools.vehicles': 'транспорт',
+  'tools.dice': 'игральные кости', 'tools.chess': 'драконьи шахматы', 'tools.cards': 'игральные карты', 'tools.threedragon': 'ставка трёх драконов',
+  'tools.vehicles.land': 'наземный транспорт', 'tools.vehicles.water': 'водный транспорт',
 };
 export const profName = (k: string) => PROF_NAMES[k] ?? k.replace(/^tools\./, '');

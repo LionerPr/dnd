@@ -364,3 +364,47 @@ button.vital:hover { border-color: var(--line-strong); }
 .search-input .input { padding-left: 32px; }
 .pending.good-soft { background: var(--good-soft); border-color: color-mix(in srgb, var(--good) 40%, var(--line)); }
 @media (max-width: 760px) { .wizard-split { grid-template-columns: minmax(0, 1fr); } .pick-list { max-height: 40vh; } }
+
+/* ---------- Создание персонажа: карточки, мастерство ---------- */
+.step-title { font-family: var(--font-display); font-size: 24px; margin: 0; }
+.card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 10px; }
+.card-grid.wide { grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
+.card-grid.scroll { max-height: 46vh; overflow: auto; padding: 2px; }
+.pick-card { display: flex; flex-direction: column; gap: 8px; text-align: left; font: inherit; color: inherit; cursor: pointer; padding: 12px 14px; border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--surface); transition: border-color .12s, background .12s; }
+.pick-card:hover { border-color: var(--line-strong); }
+.pick-card.on { border-color: var(--accent); background: var(--accent-soft); box-shadow: 0 0 0 1px var(--accent) inset; }
+.pick-card-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.pick-card-head b { font-size: 15px; }
+.pick-card .die { font-weight: 700; color: var(--accent); font-variant-numeric: tabular-nums; }
+.pick-card-body { display: flex; flex-direction: column; gap: 2px; font-size: 13px; border-top: 1px solid var(--line); padding-top: 8px; }
+.pick-card-foot { display: flex; gap: 6px; align-items: center; }
+.level-dot { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+.level-dot i { width: 7px; height: 7px; border-radius: 50%; background: var(--good); }
+.level-dot.l2 i { background: var(--warn); }
+.level-dot.l3 i { background: var(--danger); }
+.align-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+.align-grid .btn { justify-content: center; }
+@media (max-width: 560px) { .align-grid { grid-template-columns: minmax(0, 1fr); } }
+
+/* Источник владения: класс — синий, раса — зелёный, предыстория — янтарный */
+.src-class { --src: var(--mana); --src-soft: var(--mana-soft); }
+.src-race { --src: var(--good); --src-soft: var(--good-soft); }
+.src-background { --src: var(--accent); --src-soft: var(--accent-soft); }
+.src-feat, .src-custom, .src-item, .src-fixed { --src: var(--warn); --src-soft: color-mix(in srgb, var(--warn) 14%, var(--surface)); }
+.src-pill { display: inline-flex; gap: 6px; align-items: center; font-size: 13px; padding: 3px 10px; border-radius: 999px; border: 1px solid color-mix(in srgb, var(--src) 45%, var(--line)); color: var(--src); background: var(--src-soft); }
+.src-pill b { font-variant-numeric: tabular-nums; }
+.src-pill.full { opacity: .7; }
+.src-tag { font: inherit; font-size: 11.5px; padding: 1px 9px; border-radius: 999px; border: 1px dashed color-mix(in srgb, var(--src) 55%, var(--line)); color: var(--src); background: none; cursor: pointer; white-space: nowrap; }
+.src-tag.on { border-style: solid; background: var(--src-soft); font-weight: 600; }
+.src-tag:disabled { opacity: .3; cursor: default; }
+span.src-tag { cursor: default; }
+.mastery { border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--surface); overflow: hidden; }
+.mastery-row { display: grid; grid-template-columns: minmax(0, 1fr) 44px auto; align-items: center; gap: 10px; padding: 7px 14px; border-top: 1px solid var(--line); }
+.mastery-row:first-child { border-top: 0; }
+.mastery-row .name small { color: var(--muted); font-size: 10.5px; letter-spacing: .05em; margin-left: 4px; }
+.mastery-row .num { text-align: right; color: var(--muted); }
+.mastery-row.fixed, .mastery-row.picked { background: color-mix(in srgb, var(--accent-soft) 45%, var(--surface)); }
+.mastery-row.fixed .num, .mastery-row.picked .num { color: var(--ink); }
+.mastery-row.fixed + .mastery-row:not(.fixed) { border-top: 2px solid var(--line-strong); }
+.mastery-row .tags { display: flex; gap: 4px; justify-content: flex-end; flex-wrap: wrap; }
+.good-text { color: var(--good); }

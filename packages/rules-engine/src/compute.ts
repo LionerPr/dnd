@@ -20,6 +20,10 @@ import type {
   ProficiencyKind,
   Spellcasting,
 } from './types.js';
+import { backgroundById } from './backgrounds.js';
+
+/** Откуда умение или владение: раса, класс, предыстория, черта, своё, предмет */
+export type FeatureFrom = 'race' | 'class' | 'background' | 'feat' | 'custom' | 'item';
 
 /** Значение «по уровню»: { 3: 2, 10: 3 } на 12-м уровне даёт 3; число — как есть; ниже первого порога — 0. */
 export function atLevel(count: LevelCount | undefined, level: number): number {
@@ -39,6 +43,7 @@ export const proficiencyBonus = (level: number): number => 2 + Math.floor((Math.
 export interface SourcedFeature extends Feature {
   /** Откуда умение: «Дварф», «Варвар 3», «Черта» */
   origin: string;
+  from: FeatureFrom;
   /** Уровень класса-источника, нужен для ресурсов, зависящих от уровня */
   sourceLevel: number;
   /** Для умения с выбором частей (боевой стиль, метамагия): выбранные части */
@@ -53,9 +58,9 @@ export function collectFeatures(c: Character, content: ContentIndex): SourcedFea
 
   const race = c.raceId ? content.races.get(c.raceId) : undefined;
   if (race) {
-    for (const f of race.features) if (allowed(f)) out.push({ ...f, origin: race.name, sourceLevel: lvl });
+    for (const f of race.features) if (allowed(f)) out.push({ ...f, origin: race.name, from: 'race', sourceLevel: lvl });
     const sub = race.subraces?.find((s) => s.id === c.subraceId);
-    if (sub) for (const f of sub.features) if (allowed(f)) out.push({ ...f, origin: sub.name, sourceLevel: lvl });
+    if (sub) for (const f of sub.features) if (allowed(f)) out.push({ ...f, origin: sub.name, from: 'race', sourceLevel: lvl });
   }
 
   for (const entry of c.classes) {
@@ -64,23 +69,32 @@ export function collectFeatures(c: Character, content: ContentIndex): SourcedFea
     const unlocked = new Set(cls.levels.filter((l) => l.level <= entry.level).flatMap((l) => l.features));
     for (const f of cls.features) {
       const byLevel = f.level !== undefined ? f.level <= entry.level : unlocked.has(f.id);
-      if (byLevel && allowed(f)) out.push({ ...f, origin: `${cls.name} ${entry.level}`, sourceLevel: entry.level });
+      if (byLevel && allowed(f)) out.push({ ...f, origin: `${cls.name} ${entry.level}`, from: 'class', sourceLevel: entry.level });
     }
     const sub = cls.subclasses.find((s) => s.id === entry.subclassId);
     if (sub) {
       for (const f of sub.features) {
         if ((f.level ?? cls.subclassLevel) <= entry.level && allowed(f)) {
-          out.push({ ...f, origin: sub.name, sourceLevel: entry.level });
+          out.push({ ...f, origin: sub.name, from: 'class', sourceLevel: entry.level });
         }
       }
     }
   }
 
+  const bg = backgroundById(c.backgroundId);
+  if (bg) {
+    const effects: Effect[] = [{ type: 'proficiency', kind: 'skill', ids: bg.skills }];
+    if (bg.tools?.length) effects.push({ type: 'proficiency', kind: 'tool', ids: bg.tools });
+    if (bg.toolChoice) effects.push({ type: 'choice', id: 'bg.tools', kind: 'tool', pick: bg.toolChoice.pick, of: bg.toolChoice.of });
+    if (bg.languages) effects.push({ type: 'choice', id: 'bg.languages', kind: 'language', pick: bg.languages, of: 'any' });
+    out.push({ id: `bg.${bg.id}`, name: bg.feature.name, description: bg.feature.description, effects, origin: bg.name, from: 'background', sourceLevel: lvl });
+  }
+
   for (const id of c.featIds) {
     const feat = content.feats.get(id);
-    if (feat) out.push({ ...feat, origin: 'Черта', sourceLevel: lvl });
+    if (feat) out.push({ ...feat, origin: 'Черта', from: 'feat', sourceLevel: lvl });
   }
-  for (const f of c.extraFeatures) out.push({ ...f, origin: 'Своё', sourceLevel: lvl });
+  for (const f of c.extraFeatures) out.push({ ...f, origin: 'Своё', from: 'custom', sourceLevel: lvl });
   return out;
 }
 
@@ -213,6 +227,10 @@ export interface Sheet {
   /** asi: можно вместо характеристик взять черту (значение выбора «feat:<id>:<название>») */
   /** kind feature — выбрать части умения featureId (боевой стиль); expertise — навыки для компетентности */
   pendingChoices: { id: string; kind: string; pick: number; of: string[] | 'any'; origin: string; asi?: boolean; featureId?: string }[];
+  /** Все выборы владений (и сделанные, и нет) с источником — для счётчиков «Класс 1/2, Раса 0/1» */
+  choiceGroups: { id: string; kind: ProficiencyKind; pick: number; of: string[] | 'any'; origin: string; from: FeatureFrom; chosen: string[] }[];
+  /** Владения, данные без выбора, с источником */
+  grants: { kind: ProficiencyKind; id: string; origin: string; from: FeatureFrom }[];
 }
 
 function casterLevelFor(cls: CharacterClass, entryLevel: number, subclassCasting: Spellcasting | undefined, multiclass: boolean) {
@@ -264,7 +282,19 @@ export function computeSheet(c: Character, content: ContentIndex): Sheet {
     (c.choices[`class.${firstClass.id}.skills`] ?? []).slice(0, firstClass.skillChoices.pick).forEach((s) => profs.skill.add(s));
   }
   const pendingChoices: Sheet['pendingChoices'] = [];
+  const choiceGroups: Sheet['choiceGroups'] = [];
+  const grants: Sheet['grants'] = [];
+  const sourceOf = (e: Effect) => {
+    const f = features.find((x) => x.effects?.includes(e));
+    return { origin: f?.origin ?? 'Предмет', from: f?.from ?? ('item' as const) };
+  };
   if (firstClass) {
+    firstClass.saves.forEach((id) => grants.push({ kind: 'save', id, origin: firstClass.name, from: 'class' }));
+    firstClass.tools.filter((t) => !/выберите|^либо|выбор/i.test(t)).forEach((id) => grants.push({ kind: 'tool', id, origin: firstClass.name, from: 'class' }));
+    choiceGroups.push({
+      id: `class.${firstClass.id}.skills`, kind: 'skill', pick: firstClass.skillChoices.pick, of: firstClass.skillChoices.from, origin: firstClass.name, from: 'class',
+      chosen: (c.choices[`class.${firstClass.id}.skills`] ?? []).slice(0, firstClass.skillChoices.pick),
+    });
     const chosen = c.choices[`class.${firstClass.id}.skills`]?.length ?? 0;
     if (chosen < firstClass.skillChoices.pick) {
       pendingChoices.push({ id: `class.${firstClass.id}.skills`, kind: 'skill', pick: firstClass.skillChoices.pick - chosen, of: firstClass.skillChoices.from, origin: firstClass.name });
@@ -272,14 +302,19 @@ export function computeSheet(c: Character, content: ContentIndex): Sheet {
   }
   const expertise = new Set<Skill>();
   for (const { effect: e } of effects) {
-    if (e.type === 'proficiency') e.ids.forEach((id) => profs[e.kind].add(id));
+    if (e.type === 'proficiency') {
+      const src = sourceOf(e);
+      e.ids.forEach((id) => {
+        profs[e.kind].add(id);
+        grants.push({ kind: e.kind, id, ...src });
+      });
+    }
     if (e.type === 'choice') {
       const chosen = (c.choices[e.id] ?? []).slice(0, e.pick);
       chosen.forEach((id) => profs[e.kind].add(id));
-      if (chosen.length < e.pick) {
-        const origin = features.find((f) => f.effects?.includes(e))?.origin ?? '';
-        pendingChoices.push({ id: e.id, kind: e.kind, pick: e.pick - chosen.length, of: e.of, origin });
-      }
+      const src = sourceOf(e);
+      choiceGroups.push({ id: e.id, kind: e.kind, pick: e.pick, of: e.of, chosen, ...src });
+      if (chosen.length < e.pick) pendingChoices.push({ id: e.id, kind: e.kind, pick: e.pick - chosen.length, of: e.of, origin: src.origin });
     }
     if (e.type === 'ability_choice') {
       const values = c.choices[e.id] ?? [];
@@ -521,5 +556,7 @@ export function computeSheet(c: Character, content: ContentIndex): Sheet {
     carried: { weight: Math.round(weight * 10) / 10, capacity: scores.str * 15 },
     overridden,
     pendingChoices,
+    choiceGroups,
+    grants,
   };
 }
