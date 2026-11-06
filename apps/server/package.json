@@ -1,0 +1,33 @@
+{
+  "name": "@dnd/server",
+  "version": "0.1.0",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "dev": "tsx watch src/main.ts",
+    "start": "tsx src/main.ts",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@dnd/rules-engine": "workspace:*",
+    "@electric-sql/pglite": "^0.5.15",
+    "@fastify/cookie": "^11.1.5",
+    "@fastify/static": "^10.1.10",
+    "bcryptjs": "^3.0.3",
+    "cheerio": "^1.2.0",
+    "domhandler": "^6.0.1",
+    "fastify": "^5.12.8",
+    "nanoid": "^6.0.2",
+    "postgres": "^4.1.0",
+    "socket.io": "^4.8.4",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "socket.io-client": "^4.8.4",
+    "tsx": "^4.23.15",
+    "typescript": "^5.9.3",
+    "vitest": "^2.1.9"
+  }
+}
