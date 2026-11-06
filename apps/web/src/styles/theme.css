@@ -1,0 +1,180 @@
+/* Тема «Хроники»: тёмная шапка, багрянец и золото, объёмные карточки.
+   Слой поверх app.css и sheet.css — меняет облик, не трогая разметку. */
+
+:root {
+  --bg: #f2ebdd;
+  --surface: #fdfaf3;
+  --surface-2: #f1e8d6;
+  --ink: #1b1512;
+  --ink-2: #3b2f27;
+  --muted: #6e6153;
+  --line: #e0d4bd;
+  --line-strong: #c9b48f;
+  --accent: #a3242a;
+  --accent-ink: #fff8f0;
+  --accent-soft: #f4dcd6;
+  --gold: #b88a36;
+  --gold-soft: #f2e4c4;
+  --focus: #a3242a;
+  --chrome: #17130f;
+  --chrome-2: #241d17;
+  --chrome-ink: #f3ead8;
+  --chrome-muted: #b9aa92;
+  --shadow: 0 1px 2px rgba(40, 25, 10, 0.06), 0 4px 14px rgba(40, 25, 10, 0.06);
+  --shadow-lift: 0 2px 4px rgba(40, 25, 10, 0.08), 0 10px 28px rgba(40, 25, 10, 0.12);
+  --r: 7px;
+  --r-lg: 12px;
+  --header-h: 60px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --bg: #111215;
+    --surface: #1a1b20;
+    --surface-2: #23242b;
+    --ink: #eee6d6;
+    --ink-2: #d5cab6;
+    --muted: #9d9384;
+    --line: #2d2e36;
+    --line-strong: #44454f;
+    --accent: #e0544b;
+    --accent-ink: #160e0d;
+    --accent-soft: #3a1f1e;
+    --gold: #d6aa58;
+    --gold-soft: #3a3020;
+    --focus: #e0544b;
+    --chrome: #0b0c0e;
+    --chrome-2: #16171b;
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 6px 18px rgba(0, 0, 0, 0.25);
+    --shadow-lift: 0 2px 6px rgba(0, 0, 0, 0.4), 0 14px 34px rgba(0, 0, 0, 0.35);
+  }
+}
+:root[data-theme='dark'] {
+  --bg: #111215;
+  --surface: #1a1b20;
+  --surface-2: #23242b;
+  --ink: #eee6d6;
+  --ink-2: #d5cab6;
+  --muted: #9d9384;
+  --line: #2d2e36;
+  --line-strong: #44454f;
+  --accent: #e0544b;
+  --accent-ink: #160e0d;
+  --accent-soft: #3a1f1e;
+  --gold: #d6aa58;
+  --gold-soft: #3a3020;
+  --focus: #e0544b;
+  --chrome: #0b0c0e;
+  --chrome-2: #16171b;
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 6px 18px rgba(0, 0, 0, 0.25);
+  --shadow-lift: 0 2px 6px rgba(0, 0, 0, 0.4), 0 14px 34px rgba(0, 0, 0, 0.35);
+}
+
+/* Фон: тёплый пергамент с мягкой виньеткой */
+body {
+  background:
+    radial-gradient(1200px 500px at 50% -120px, color-mix(in srgb, var(--gold) 14%, transparent), transparent 70%),
+    var(--bg);
+  background-attachment: fixed;
+}
+
+h1 { font-size: 38px; font-weight: 700; letter-spacing: 0.01em; }
+h2 { font-weight: 700; }
+
+/* ---------- Шапка ---------- */
+.topbar {
+  background: linear-gradient(180deg, var(--chrome-2), var(--chrome));
+  backdrop-filter: none;
+  border-bottom: 0;
+  color: var(--chrome-ink);
+  box-shadow: 0 2px 0 var(--accent), 0 6px 20px rgba(0, 0, 0, 0.25);
+}
+.topbar .brand { color: var(--chrome-ink); font-size: 24px; font-weight: 700; letter-spacing: 0.02em; }
+.topbar .brand svg { color: var(--gold); }
+.topbar .nav a {
+  color: var(--chrome-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  font-size: 12.5px;
+  font-weight: 700;
+  border-radius: 0;
+  padding: 0 14px;
+  height: var(--header-h);
+  display: inline-flex;
+  align-items: center;
+  position: relative;
+}
+.topbar .nav a:hover { color: var(--chrome-ink); background: rgba(255, 255, 255, 0.05); }
+.topbar .nav a.active { color: #fff; background: rgba(255, 255, 255, 0.06); }
+.topbar .nav a.active::after { content: ''; position: absolute; left: 10px; right: 10px; bottom: 0; height: 3px; background: var(--accent); border-radius: 2px 2px 0 0; }
+.topbar .muted { color: var(--chrome-muted); }
+.topbar .btn.ghost { color: var(--chrome-ink); }
+.topbar .btn.ghost:hover { background: rgba(255, 255, 255, 0.08); }
+.topbar .btn:not(.ghost) { background: transparent; color: var(--chrome-ink); border-color: rgba(255, 255, 255, 0.18); }
+
+/* ---------- Поверхности ---------- */
+.panel,
+.card-link,
+.vital,
+.member,
+.media-card,
+.board-bar {
+  box-shadow: var(--shadow);
+  border-color: color-mix(in srgb, var(--line) 80%, transparent);
+}
+.panel { position: relative; }
+.panel-head { background: linear-gradient(180deg, color-mix(in srgb, var(--surface-2) 60%, transparent), transparent); border-top-left-radius: var(--r-lg); border-top-right-radius: var(--r-lg); }
+.panel-head h3 { display: flex; align-items: center; gap: 10px; font-size: 20px; font-weight: 700; }
+.panel-head h3::before { content: ''; width: 7px; height: 7px; transform: rotate(45deg); background: var(--accent); flex: none; }
+.card-link:hover { box-shadow: var(--shadow-lift); border-color: var(--line-strong); transform: translateY(-1px); }
+
+/* Орнамент: золотой ромб в разделителях */
+.rule > i { border-color: var(--gold); background: var(--gold-soft); }
+.rule::before,
+.rule::after { background: linear-gradient(90deg, transparent, var(--line-strong), transparent); }
+
+/* ---------- Кнопки ---------- */
+.btn { font-weight: 600; }
+.btn.primary { background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 88%, #fff), var(--accent)); border-color: color-mix(in srgb, var(--accent) 80%, #000); color: var(--accent-ink); box-shadow: 0 1px 0 rgba(255, 255, 255, 0.2) inset, 0 1px 2px rgba(0, 0, 0, 0.15); }
+.btn.primary:hover { background: var(--accent); filter: brightness(1.06); }
+.btn.accent { background: linear-gradient(180deg, color-mix(in srgb, var(--gold) 85%, #fff), var(--gold)); border-color: color-mix(in srgb, var(--gold) 75%, #000); color: #1b1309; }
+
+/* ---------- Вкладки ---------- */
+.tabs { border-bottom: 1px solid var(--line-strong); }
+.tabs button { text-transform: uppercase; letter-spacing: 0.08em; font-size: 12.5px; font-weight: 700; }
+.tabs button.on { color: var(--accent); }
+.tabs button.on::after { height: 3px; border-radius: 2px 2px 0 0; }
+
+/* ---------- Лист персонажа ---------- */
+.sheet-head h1 { font-size: 44px; }
+.level-badge b { background: var(--accent); }
+.vital { border-top: 3px solid var(--accent); }
+.vital .v { font-weight: 700; }
+.ab-block { background: var(--surface); border: 1px solid color-mix(in srgb, var(--line) 80%, transparent); border-radius: var(--r-lg); padding: 10px 12px 12px; box-shadow: var(--shadow); }
+.ab-block h3 { color: var(--ink); font-weight: 700; }
+.ab-block header i { background: linear-gradient(90deg, var(--gold), transparent); opacity: 0.6; }
+.ab-block .score { display: inline-grid; place-items: center; min-width: 42px; height: 42px; padding: 0 6px; border-radius: 10px; border: 2px solid var(--gold); background: var(--gold-soft); font-family: var(--font-display); font-size: 22px; }
+
+/* ---------- Комната ---------- */
+.member { border-left: 4px solid #3a6db3; transition: box-shadow 0.15s; }
+.member:hover { box-shadow: var(--shadow-lift); }
+.member.npc { border-left-color: var(--accent); }
+.member.npc.ally { border-left-color: var(--good); }
+.member.turn { box-shadow: 0 0 0 2px var(--gold), var(--shadow-lift); }
+.room-tabs .tabs { margin-bottom: 0; }
+
+/* Вход */
+.auth { background: radial-gradient(900px 500px at 50% 0%, color-mix(in srgb, var(--accent) 16%, transparent), transparent 70%), var(--bg); }
+.auth .brand { font-size: 34px; font-weight: 700; }
+.auth .brand svg { color: var(--accent); }
+.ab-block { padding: 8px 8px 10px; }
+.ab-roll { padding-left: 8px; letter-spacing: 0; text-transform: none; font-size: 12.5px; min-width: 0; }
+.ab-roll span { min-width: 0; }
+.ab-roll .prof-dot { flex: none; }
+.ab-roll b { flex: none; }
+@media (max-width: 760px) {
+  .topbar { gap: 8px; }
+  .topbar .brand span { display: none; }
+  .topbar .nav { overflow-x: auto; scrollbar-width: none; min-width: 0; }
+  .topbar .nav a { padding: 0 9px; letter-spacing: 0.04em; font-size: 11.5px; }
+}

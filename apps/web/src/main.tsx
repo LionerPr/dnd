@@ -1,9 +1,11 @@
 import '@fontsource/cormorant-garamond/500.css';
 import '@fontsource/cormorant-garamond/600.css';
 import '@fontsource/cormorant-garamond/600-italic.css';
+import '@fontsource/cormorant-garamond/700.css';
 import '@fontsource-variable/inter';
 import './styles/app.css';
 import './styles/sheet.css';
+import './styles/theme.css';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
