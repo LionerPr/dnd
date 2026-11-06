@@ -3,6 +3,9 @@ import { nanoid } from 'nanoid';
 import type { Db } from './db.js';
 import { forbidden, notFound } from './errors.js';
 
+/** Ключ поиска: без регистра и без разницы между «ё» и «е» */
+export const searchKey = (s: string) => s.toLowerCase().replace(/ё/g, 'е');
+
 // ---------- Контент ----------
 
 export type ContentKind = Content['kind'] | 'feat';
@@ -33,7 +36,7 @@ export async function listContent(db: Db, userId: string, opts: { kind?: string;
   }
   if (opts.q) {
     // lower() в SQLite не знает кириллицу, поэтому ищем по заранее приведённому имени
-    params.push(`%${opts.q.toLowerCase()}%`);
+    params.push(`%${searchKey(opts.q)}%`);
     where += ` AND c.name_lc LIKE $${params.length}`;
   }
   if (opts.classId) {
@@ -85,14 +88,14 @@ export async function saveContent(
     if (row.owner_id !== userId) throw forbidden('Это чужая запись — сделайте копию');
     await db.query(
       `UPDATE content SET name = $2, data = $3, visibility = $4, campaign_id = $5, name_lc = $6, updated_at = now() WHERE id = $1`,
-      [input.id, input.name, { ...input.data, id: input.id, name: input.name }, input.visibility ?? row.visibility, input.campaignId ?? row.campaign_id, input.name.toLowerCase()],
+      [input.id, input.name, { ...input.data, id: input.id, name: input.name }, input.visibility ?? row.visibility, input.campaignId ?? row.campaign_id, searchKey(input.name)],
     );
     return input.id;
   }
   const id = `${input.kind}-${nanoid(10)}`;
   await db.query(
     `INSERT INTO content (id, kind, name, owner_id, campaign_id, visibility, source, source_url, data, name_lc) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
-    [id, input.kind, input.name, userId, input.campaignId ?? null, input.visibility ?? 'private', input.source ?? 'custom', input.sourceUrl ?? null, { ...input.data, id, name: input.name, kind: input.kind }, input.name.toLowerCase()],
+    [id, input.kind, input.name, userId, input.campaignId ?? null, input.visibility ?? 'private', input.source ?? 'custom', input.sourceUrl ?? null, { ...input.data, id, name: input.name, kind: input.kind }, searchKey(input.name)],
   );
   return id;
 }
@@ -102,13 +105,13 @@ export async function upsertLibraryContent(db: Db, kind: ContentKind, name: stri
   const existing = await db.query<{ id: string }>(`SELECT id FROM content WHERE source_url = $1 AND owner_id IS NULL`, [sourceUrl]);
   if (existing[0]) {
     const id = existing[0].id;
-    await db.query(`UPDATE content SET name = $2, data = $3, name_lc = $4, updated_at = now() WHERE id = $1`, [id, name, { ...data, id, name, kind, source, sourceUrl }, name.toLowerCase()]);
+    await db.query(`UPDATE content SET name = $2, data = $3, name_lc = $4, updated_at = now() WHERE id = $1`, [id, name, { ...data, id, name, kind, source, sourceUrl }, searchKey(name)]);
     return id;
   }
   const id = `${kind}-${nanoid(10)}`;
   await db.query(
     `INSERT INTO content (id, kind, name, owner_id, visibility, source, source_url, data, name_lc) VALUES ($1,$2,$3,NULL,'public',$4,$5,$6,$7)`,
-    [id, kind, name, source, sourceUrl, { ...data, id, name, kind, source, sourceUrl }, name.toLowerCase()],
+    [id, kind, name, source, sourceUrl, { ...data, id, name, kind, source, sourceUrl }, searchKey(name)],
   );
   return id;
 }

@@ -10,6 +10,7 @@ const has = existsSync(fx('78-dwarf.html')) && existsSync(fx('87-barbarian.html'
 describe.skipIf(!has)('разбор dnd.su', () => {
   it('раса: варианты, бонусы, скорость, зрение, выбор инструментов', () => {
     const r = parseRace(readFileSync(fx('78-dwarf.html'), 'utf8'), 'https://dnd.su/race/78-dwarf/');
+    expect(r.book).toBe("Player's Handbook");
     expect(r.name).toBe('Дварф');
     expect(r.speed).toBe(25);
     const mountain = r.subraces!.find((s) => s.id === 'mountain')!;

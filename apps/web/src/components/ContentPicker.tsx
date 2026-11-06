@@ -1,7 +1,7 @@
 import { Search } from 'lucide-react';
 import { useState } from 'react';
 import type { ContentRow } from '../api/client';
-import { KIND_NAMES, levelName, schoolName } from '../lib/format';
+import { bookShort, KIND_NAMES, levelName, schoolName, searchKey } from '../lib/format';
 import { useContentList } from '../lib/hooks';
 import { Loading, Modal } from './ui';
 
@@ -28,7 +28,7 @@ export function ContentPicker({
 }) {
   const [q, setQ] = useState('');
   const list = useContentList(kind, extra);
-  const rows = (list.data?.items ?? []).filter((r) => (!filter || filter(r)) && r.name.toLowerCase().includes(q.toLowerCase())).slice(0, 200);
+  const rows = (list.data?.items ?? []).filter((r) => (!filter || filter(r)) && searchKey(r.name).includes(searchKey(q))).slice(0, 200);
   const pick = (r: ContentRow | null, custom?: string) => {
     onPick(r, custom);
     if (!keepOpen) onClose();
@@ -58,6 +58,7 @@ export function ContentPicker({
             <button key={r.id} className="list-item" onClick={() => pick(r)}>
               <span className="grow">
                 <b>{r.name}</b>
+                {r.data?.book && <span className="muted small"> · {bookShort(r.data.book)}</span>}
                 {kind === 'spell' && <span className="muted small"> · {levelName(r.data.level ?? 0)}, {schoolName(r.data.school)}</span>}
                 {kind === 'monster' && <span className="muted small"> · ПО {r.data.cr}, {r.data.type}</span>}
               </span>

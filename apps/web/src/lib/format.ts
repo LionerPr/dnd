@@ -31,3 +31,37 @@ export const KIND_NAMES: Record<string, { one: string; many: string }> = {
 };
 
 export const levelName = (l: number) => (l === 0 ? 'Заговор' : `${l} уровень`);
+
+/** Ключ для поиска: без регистра и без разницы между «ё» и «е». */
+export const searchKey = (s: string) => s.toLowerCase().replace(/ё/g, 'е');
+
+const BOOKS: Record<string, string> = {
+  "Player's Handbook": 'PHB',
+  "Player's Handbook 2024": 'PHB 2024',
+  'Mordenkainen Presents: Monsters of the Multiverse': 'MPMM',
+  "Volo's Guide to Monsters": 'VGM',
+  "Xanathar's Guide to Everything": 'XGE',
+  "Tasha's Cauldron of Everything": 'TCE',
+  'Mordenkainen’s Tome of Foes': 'MTF',
+  "Mordenkainen's Tome of Foes": 'MTF',
+  'Eberron: Rising from the Last War': 'ERLW',
+  "Guildmasters' Guide to Ravnica": 'GGR',
+  'Elemental Evil Player’s Companion': 'EEPC',
+  "Elemental Evil Player's Companion": 'EEPC',
+  "Sword Coast Adventurer's Guide": 'SCAG',
+  'Mythic Odysseys of Theros': 'MOT',
+  'Spelljammer: Adventures in Space': 'AAG',
+  "Fizban's Treasury of Dragons": 'FTD',
+  'The Wild Beyond the Witchlight': 'WBW',
+  'Dragonlance: Shadow of the Dragon Queen': 'DSotDQ',
+  "Dungeon Master's Guide": 'DMG',
+  'Monster Manual': 'MM',
+};
+
+/** Короткое имя книги-источника: PHB, MPMM… Помогает различать одноимённые расы из разных книг. */
+export function bookShort(book?: string) {
+  if (!book) return undefined;
+  if (BOOKS[book]) return BOOKS[book];
+  const caps = book.replace(/[’']s\b/g, '').match(/\b[A-Z0-9]/g)?.join('');
+  return caps && caps.length >= 2 && caps.length <= 6 ? caps : book;
+}

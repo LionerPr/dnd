@@ -5,7 +5,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { parsePage, saveToLibrary, startCatalog, stopCatalog, useCatalogJob, type ImportKind, type Parsed } from '../lib/dndsu';
 import { api, type ContentRow } from '../api/client';
 import { Empty, Field, Loading, Modal, Segmented, Tabs, useToast } from '../components/ui';
-import { KIND_NAMES, levelName, plural, schoolName } from '../lib/format';
+import { bookShort, KIND_NAMES, levelName, plural, schoolName, searchKey } from '../lib/format';
 import { SpellCard } from '../components/sheet/SpellsTab';
 import { useAuth } from '../lib/auth';
 import { useContentList } from '../lib/hooks';
@@ -19,6 +19,12 @@ const ITEM_CATEGORIES: Record<string, string> = {
 
 function rowMeta(r: ContentRow) {
   const d = r.data ?? {};
+  const book = bookShort(d.book);
+  const meta = rowKindMeta(r, d);
+  return [book, meta].filter(Boolean).join(' · ');
+}
+
+function rowKindMeta(r: ContentRow, d: any) {
   switch (r.kind) {
     case 'spell':
       return `${levelName(d.level ?? 0)}, ${schoolName(d.school)}${d.concentration ? ' · концентрация' : ''}${d.ritual ? ' · ритуал' : ''}`;
@@ -49,7 +55,7 @@ export function LibraryPage() {
   const list = useContentList(kind);
 
   const rows = (list.data?.items ?? [])
-    .filter((r) => r.name.toLowerCase().includes(q.trim().toLowerCase()))
+    .filter((r) => searchKey(r.name).includes(searchKey(q.trim())))
     .filter((r) => mine === 'all' || r.owner_id === user?.id)
     .filter((r) => kind !== 'spell' || level === 'any' || String(r.data?.level ?? 0) === level)
     .filter((r) => kind !== 'spell' || !classId || (r.data?.classes ?? []).includes(classId))

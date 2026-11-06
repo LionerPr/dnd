@@ -49,7 +49,16 @@ const slugOf = (url: string) => new URL(url).pathname.split('/').filter(Boolean)
 function cardTitle($: $) {
   const raw = text($('h2.card-title').first().text());
   const m = raw.match(/^(.*?)\s*\[(.+?)\]/);
-  return { name: m ? m[1]!.trim() : raw, en: m?.[2]?.trim() };
+  return { name: m ? m[1]!.trim() : raw, en: m?.[2]?.trim(), book: pageBook($) };
+}
+
+/** Книга-источник страницы: «Источник: «Player's Handbook»» в шапке карточки. */
+function pageBook($: $): string | undefined {
+  const label = $('strong')
+    .filter((_, el) => /^Источник:?$/.test(text($(el).text())))
+    .first();
+  const book = text(label.parent().find('span').first().text() || label.parent().text().replace(/Источник:?/, '')).replace(/[«»]/g, '').trim();
+  return book || undefined;
 }
 
 /** Текст блока с сохранением абзацев и списков — так описание читается в листе. */
@@ -168,7 +177,7 @@ function featuresFromParagraphs($: $, root: cheerio.Cheerio<AnyNode>, prefix: st
 
 export function parseRace(html: string, url: string): Race {
   const $ = cheerio.load(html);
-  const { name, en } = cardTitle($);
+  const { name, en, book } = cardTitle($);
   const slug = slugOf(url);
   const article = $('.card__article-body, .article-body').first().length ? $('.card__article-body, .article-body').first() : $('body');
   const variants = $('div.multiforo');
@@ -197,7 +206,8 @@ export function parseRace(html: string, url: string): Race {
     name,
     source: 'dnd.su',
     sourceUrl: url,
-    book: en,
+    nameEn: en,
+    book,
     size: sizeFrom(sizeFeature?.description ?? ''),
     speed: speedEffect?.walk ?? 30,
     description: intro || undefined,
@@ -284,7 +294,7 @@ function levelFromEm(t: string): number | undefined {
 
 export function parseClass(html: string, url: string): CharacterClass {
   const $ = cheerio.load(html);
-  const { name, en } = cardTitle($);
+  const { name, en, book } = cardTitle($);
   const slug = slugOf(url);
   const rules = CLASS_RULES[slug] ?? {};
 
@@ -388,7 +398,8 @@ export function parseClass(html: string, url: string): CharacterClass {
     name,
     source: 'dnd.su',
     sourceUrl: url,
-    book: en,
+    nameEn: en,
+    book,
     hitDie,
     saves,
     armor,

@@ -4,7 +4,7 @@ import { Plus, Trash2, X } from 'lucide-react';
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api, type CharacterView, type ContentRow } from '../../api/client';
-import { signed } from '../../lib/format';
+import { bookShort, signed } from '../../lib/format';
 import { useContentList } from '../../lib/hooks';
 import { ContentPicker } from '../ContentPicker';
 import { Field, NumberInput, Segmented } from '../ui';
@@ -49,6 +49,7 @@ export function BuildTab({ view, save }: { view: CharacterView; save: Save }) {
               {(races.data?.items ?? []).map((r) => (
                 <option key={r.id} value={r.id}>
                   {r.name}
+                  {r.data?.book ? ` (${bookShort(r.data.book)})` : ''}
                 </option>
               ))}
             </select>

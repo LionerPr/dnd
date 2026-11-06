@@ -243,5 +243,8 @@ describe('игра целиком', () => {
   it('поиск по-русски без учёта регистра', async () => {
     const list = await as(player.cookie, 'GET', `/api/content?q=${encodeURIComponent('горный')}`);
     expect(list.body.items.map((i: { name: string }) => i.name)).toContain('Горный дварф');
+    await as(player.cookie, 'POST', '/api/content', { kind: 'race', name: 'Драконорождённый', data: { kind: 'race', size: 'medium', speed: 30, features: [] } });
+    const yo = await as(player.cookie, 'GET', `/api/content?q=${encodeURIComponent('драконорожденный')}`);
+    expect(yo.body.items.map((i: { name: string }) => i.name)).toContain('Драконорождённый');
   });
 });

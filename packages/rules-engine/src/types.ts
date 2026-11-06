@@ -44,7 +44,10 @@ export interface ContentMeta {
   name: string;
   source: ContentSource;
   sourceUrl?: string;
+  /** Книга-источник, например «Player's Handbook» */
   book?: string;
+  /** Название на английском */
+  nameEn?: string;
 }
 
 export interface Race extends ContentMeta {
