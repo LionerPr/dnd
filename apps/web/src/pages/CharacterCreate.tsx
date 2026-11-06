@@ -24,7 +24,7 @@ import {
   type Skill,
 } from '@dnd/rules-engine';
 import { ArrowLeft, ArrowRight, Check, Dices, Search } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { Fragment, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import type { CharacterView, ContentRow } from '../api/client';
 import { ChoiceRow, ChosenList, optionLabel } from '../components/sheet/Choices';
@@ -261,7 +261,13 @@ function OriginStep({ view, save }: { view: CharacterView; save: Save }) {
   const { input, match } = useFilter();
   const [homebrew, setHomebrew] = useState(false);
   const ed = editionOf(c);
-  const all = (races.data?.items ?? []).filter((r) => inEdition(r, ed));
+  const allRaces = races.data?.items ?? [];
+  const current = allRaces.filter((r) => inEdition(r, ed));
+  // В 2024 доступны и расы прошлых книг (кроме тех, что переизданы); их бонусы к характеристикам заменяет предыстория
+  const names2024 = new Set(current.map((r) => r.name.toLowerCase().replace(/ё/g, 'е')));
+  const legacy = ed === '2024' ? allRaces.filter((r) => !inEdition(r, '2024') && !names2024.has(r.name.toLowerCase().replace(/ё/g, 'е'))) : [];
+  const all = [...current, ...legacy];
+  const legacyIds = new Set(legacy.map((r) => r.id));
   const items = all.filter((r) => match(r.name) && (homebrew || !r.source_url?.includes('/homebrew/') || r.id === c.raceId));
   const hasHomebrew = all.some((r) => r.source_url?.includes('/homebrew/'));
   const custom = !c.backgroundId && !!c.background;
@@ -281,8 +287,15 @@ function OriginStep({ view, save }: { view: CharacterView; save: Save }) {
           </div>
         </div>
         <div className="card-grid scroll">
-          {items.map((r) => (
-            <RaceCard key={r.id} r={r} on={c.raceId === r.id} onPick={() => save((d) => ({ ...d, raceId: r.id, subraceId: undefined }))} />
+          {items.map((r, i) => (
+            <Fragment key={r.id}>
+              {legacyIds.has(r.id) && !legacyIds.has(items[i - 1]?.id ?? '') && (
+                <p className="small muted" style={{ gridColumn: '1 / -1', margin: '8px 0 0' }}>
+                  Расы из книг 2014 года. По правилам 2024 их увеличение характеристик не действует — его даёт предыстория.
+                </p>
+              )}
+              <RaceCard r={r} on={c.raceId === r.id} onPick={() => save((d) => ({ ...d, raceId: r.id, subraceId: undefined }))} />
+            </Fragment>
           ))}
           {!items.length && <p className="small muted">Ничего не нашлось. Расы добавляются в «Библиотеке».</p>}
         </div>

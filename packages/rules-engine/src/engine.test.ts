@@ -374,3 +374,11 @@ describe('ручные правки владений', () => {
     expect(s.abilities.str.saveProficient).toBe(false);
   });
 });
+
+describe('раса 2014 у персонажа 2024', () => {
+  it('не даёт увеличения характеристик, остальные черты остаются', () => {
+    const s = computeSheet({ ...torin(), edition: '2024' }, content);
+    expect(s.abilities.con.score).toBe(14);
+    expect(s.darkvision).toBe(60);
+  });
+});

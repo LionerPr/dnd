@@ -102,7 +102,7 @@ export function CampaignPage() {
   const toast = useToast();
   const { user } = useAuth();
   const [selected, setSelected] = useState<Target[]>([]);
-  const [modal, setModal] = useState<null | { type: 'settings' } | { type: 'npc' } | { type: 'achievement'; a?: Achievement } | { type: 'award'; a: Achievement } | { type: 'character'; id: string } | { type: 'statblock'; npc: Npc } | { type: 'attach' }>(null);
+  const [modal, setModal] = useState<null | { type: 'settings' } | { type: 'npc'; ally?: boolean } | { type: 'achievement'; a?: Achievement } | { type: 'award'; a: Achievement } | { type: 'character'; id: string } | { type: 'statblock'; npc: Npc } | { type: 'attach' }>(null);
   const onError = (e: Error) => toast(e.message, 'error');
   const refresh = () => {
     if (!isConnected(`campaign/${id}`)) qc.invalidateQueries({ queryKey: ['campaign', id] });
@@ -142,6 +142,23 @@ export function CampaignPage() {
   const allies = snap.npcs.filter((n) => n.data.ally);
   const myChars = snap.characters.filter((c) => c.ownerId === user?.id);
   const charModal = modal?.type === 'character' ? snap.characters.find((c) => c.id === modal.id) : undefined;
+  const npcCard = (n: Npc) => (
+    <NpcCard
+      key={n.id}
+      npc={n}
+      dm={dm}
+      showEnemyHp={!!snap.campaign.settings?.showEnemyHp}
+      selected={isSel({ kind: 'npc', id: n.id })}
+      turn={currentTurn === n.id}
+      inCombat={!!combatState?.order.some((o) => o.id === n.id)}
+      combatOn={!!combatState}
+      onSelect={() => toggleSel({ kind: 'npc', id: n.id })}
+      run={(cmd) => run([{ kind: 'npc', id: n.id }], cmd)}
+      onStatblock={() => setModal({ type: 'statblock', npc: n })}
+      onCombat={(add) => combat.mutate(add ? { action: 'add', kind: 'npc', targetId: n.id } : { action: 'remove', targetId: n.id })}
+      onChanged={refresh}
+    />
+  );
 
   return (
     <main className="page wide">
@@ -172,13 +189,20 @@ export function CampaignPage() {
           <section>
             <div className="row between" style={{ marginBottom: 10 }}>
               <h2 style={{ margin: 0 }}>Отряд</h2>
-              {dm && snap.characters.length > 0 && (
-                <button className="btn ghost sm" onClick={() => setSelected((x) => (allChars.every(isSel) ? x.filter((s) => s.kind !== 'character') : [...x.filter((s) => s.kind !== 'character'), ...allChars]))}>
-                  {allChars.every(isSel) ? 'Снять выбор' : 'Выбрать всех'}
-                </button>
+              {dm && (
+                <div className="row">
+                  {snap.characters.length > 0 && (
+                    <button className="btn ghost sm" onClick={() => setSelected((x) => (allChars.every(isSel) ? x.filter((s) => s.kind !== 'character') : [...x.filter((s) => s.kind !== 'character'), ...allChars]))}>
+                      {allChars.every(isSel) ? 'Снять выбор' : 'Выбрать всех'}
+                    </button>
+                  )}
+                  <button className="btn sm" onClick={() => setModal({ type: 'npc', ally: true })}>
+                    <Plus /> НПС в отряд
+                  </button>
+                </div>
               )}
             </div>
-            {snap.characters.length === 0 ? (
+            {snap.characters.length === 0 && allies.length === 0 ? (
               <Empty title="В отряде пока никого">{dm ? 'Отправьте игрокам код приглашения: они присоединятся со своими персонажами.' : 'Прикрепите своего персонажа к кампании.'}</Empty>
             ) : (
               <div className="party">
@@ -195,6 +219,7 @@ export function CampaignPage() {
                     onMore={() => setModal({ type: 'character', id: c.id })}
                   />
                 ))}
+                {allies.map(npcCard)}
               </div>
             )}
           </section>
@@ -218,33 +243,17 @@ export function CampaignPage() {
                       Выбрать всех
                     </button>
                   )}
-                  <button className="btn sm" onClick={() => setModal({ type: 'npc' })}>
+                  <button className="btn sm" onClick={() => setModal({ type: 'npc', ally: false })}>
                     <Plus /> Добавить
                   </button>
                 </div>
               )}
             </div>
-            {snap.npcs.length === 0 ? (
+            {enemies.length === 0 ? (
               <Empty title="Пока тихо">{dm ? 'Добавьте существ из бестиария или опишите своих: хиты будут считаться здесь, а не в блокноте.' : 'Мастер ещё не выставил противников.'}</Empty>
             ) : (
               <div className="party">
-                {[...enemies, ...allies].map((n) => (
-                  <NpcCard
-                    key={n.id}
-                    npc={n}
-                    dm={dm}
-                    showEnemyHp={!!snap.campaign.settings?.showEnemyHp}
-                    selected={isSel({ kind: 'npc', id: n.id })}
-                    turn={currentTurn === n.id}
-                    inCombat={!!combatState?.order.some((o) => o.id === n.id)}
-                    combatOn={!!combatState}
-                    onSelect={() => toggleSel({ kind: 'npc', id: n.id })}
-                    run={(cmd) => run([{ kind: 'npc', id: n.id }], cmd)}
-                    onStatblock={() => setModal({ type: 'statblock', npc: n })}
-                    onCombat={(add) => combat.mutate(add ? { action: 'add', kind: 'npc', targetId: n.id } : { action: 'remove', targetId: n.id })}
-                    onChanged={refresh}
-                  />
-                ))}
+                {enemies.map(npcCard)}
               </div>
             )}
           </section>
@@ -315,7 +324,7 @@ export function CampaignPage() {
       </div>
 
       {modal?.type === 'settings' && <SettingsModal snap={snap} onClose={() => setModal(null)} />}
-      {modal?.type === 'npc' && <AddNpcModal campaignId={id} onClose={() => setModal(null)} onDone={refresh} />}
+      {modal?.type === 'npc' && <AddNpcModal campaignId={id} ally={!!modal.ally} onClose={() => setModal(null)} onDone={refresh} />}
       {modal?.type === 'achievement' && <AchievementModal campaignId={id} a={modal.a} onClose={() => setModal(null)} />}
       {modal?.type === 'award' && <AwardModal a={modal.a} characters={snap.characters} onClose={() => setModal(null)} />}
       {modal?.type === 'statblock' && <StatblockModal npc={modal.npc} onClose={() => setModal(null)} roll={(f, l) => roll(f, l)} />}
@@ -437,6 +446,9 @@ function NpcCard({
                 <Flag />
               </button>
             )}
+            <button className="btn ghost sm icon" title={d.ally ? 'Перевести в противники' : 'Перевести в отряд'} aria-label="Сторона" onClick={() => patch({ ally: !d.ally })}>
+              {d.ally ? <Swords /> : <UserPlus />}
+            </button>
             <button className="btn ghost sm icon" title={d.hidden ? 'Показать игрокам' : 'Скрыть от игроков'} aria-label="Видимость" onClick={() => patch({ hidden: !d.hidden })}>
               {d.hidden ? <EyeOff /> : <Eye />}
             </button>
@@ -870,7 +882,7 @@ function SettingsModal({ snap, onClose }: { snap: Snapshot; onClose: () => void 
   );
 }
 
-function AddNpcModal({ campaignId, onClose, onDone }: { campaignId: string; onClose: () => void; onDone: () => void }) {
+function AddNpcModal({ campaignId, ally: allyDefault, onClose, onDone }: { campaignId: string; ally: boolean; onClose: () => void; onDone: () => void }) {
   const toast = useToast();
   const [mode, setMode] = useState<'bestiary' | 'custom'>('bestiary');
   const [monster, setMonster] = useState<ContentRow | null>(null);
@@ -879,11 +891,11 @@ function AddNpcModal({ campaignId, onClose, onDone }: { campaignId: string; onCl
   const [rollHp, setRollHp] = useState(false);
   const [hidden, setHidden] = useState(false);
   const [hpView, setHpView] = useState<'' | 'exact' | 'status' | 'none'>('');
-  const [npc, setNpc] = useState({ name: '', ac: 12, maxHp: 10, initiativeBonus: 0, ally: false, notes: '' });
+  const [npc, setNpc] = useState({ name: '', ac: 12, maxHp: 10, initiativeBonus: 0, ally: allyDefault, notes: '' });
   const add = useMutation({
     mutationFn: () =>
       api(`/campaigns/${campaignId}/npcs`, {
-        body: mode === 'bestiary' ? { monsterId: monster!.id, count, rollHp, hidden, ...(hpView ? { hpView } : {}) } : { npc: { ...npc, name: npc.name.trim(), hidden, ...(hpView ? { hpView } : {}) }, count },
+        body: mode === 'bestiary' ? { monsterId: monster!.id, count, rollHp, hidden, ally: npc.ally, ...(hpView ? { hpView } : {}) } : { npc: { ...npc, name: npc.name.trim(), hidden, ...(hpView ? { hpView } : {}) }, count },
       }),
     onSuccess: () => {
       toast(count > 1 ? `Добавлено: ${count}` : 'Добавлено');
@@ -895,7 +907,7 @@ function AddNpcModal({ campaignId, onClose, onDone }: { campaignId: string; onCl
   const ok = mode === 'bestiary' ? !!monster : !!npc.name.trim() && npc.maxHp > 0;
   return (
     <Modal
-      title="Добавить существо"
+      title={allyDefault ? 'НПС в отряд' : 'Добавить существо'}
       onClose={onClose}
       wide
       footer={
@@ -935,15 +947,15 @@ function AddNpcModal({ campaignId, onClose, onDone }: { campaignId: string; onCl
           <Field label="Бонус инициативы">
             <NumberInput value={npc.initiativeBonus} onChange={(initiativeBonus) => setNpc({ ...npc, initiativeBonus })} />
           </Field>
-          <label className="check">
-            <input type="checkbox" checked={npc.ally} onChange={(e) => setNpc({ ...npc, ally: e.target.checked })} /> Союзник отряда
-          </label>
         </div>
       )}
       <div className="row wrap">
         <label className="row" style={{ gap: 8 }}>
           Сколько
           <NumberInput value={count} min={1} max={30} onChange={setCount} style={{ width: 64 }} />
+        </label>
+        <label className="check">
+          <input type="checkbox" checked={npc.ally} onChange={(e) => setNpc({ ...npc, ally: e.target.checked })} /> В отряд (союзник)
         </label>
         <label className="check">
           <input type="checkbox" checked={hidden} onChange={(e) => setHidden(e.target.checked)} /> Скрыть от игроков (засада)

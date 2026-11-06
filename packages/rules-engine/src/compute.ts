@@ -9,6 +9,7 @@ import {
   type DamageType,
   type Skill,
 } from './data.js';
+import { editionOf } from './types.js';
 import type {
   Character,
   CharacterClass,
@@ -60,9 +61,15 @@ export function collectFeatures(c: Character, content: ContentIndex): SourcedFea
 
   const race = c.raceId ? content.races.get(c.raceId) : undefined;
   if (race) {
-    for (const f of race.features) if (allowed(f)) out.push({ ...f, origin: race.name, from: 'race', sourceLevel: lvl });
+    // Раса из книг 2014 у персонажа 2024: увеличение характеристик даёт предыстория, а не раса (PHB 2024)
+    const legacy = editionOf(c) === '2024' && editionOf(race) !== '2024';
+    const adapt = (f: Feature): Feature =>
+      legacy && f.effects?.some((e) => e.type === 'ability_bonus' || e.type === 'ability_choice')
+        ? { ...f, effects: f.effects.filter((e) => e.type !== 'ability_bonus' && e.type !== 'ability_choice') }
+        : f;
+    for (const f of race.features) if (allowed(f)) out.push({ ...adapt(f), origin: race.name, from: 'race', sourceLevel: lvl });
     const sub = race.subraces?.find((s) => s.id === c.subraceId);
-    if (sub) for (const f of sub.features) if (allowed(f)) out.push({ ...f, origin: sub.name, from: 'race', sourceLevel: lvl });
+    if (sub) for (const f of sub.features) if (allowed(f)) out.push({ ...adapt(f), origin: sub.name, from: 'race', sourceLevel: lvl });
   }
 
   for (const entry of c.classes) {

@@ -313,7 +313,7 @@ export function campaignRoutes(api: Api, deps: AppDeps) {
     const { id } = req.params as { id: string };
     await requireDm(deps, id, user);
     const body = z
-      .object({ monsterId: z.string().optional(), count: z.number().int().min(1).max(30).optional(), rollHp: z.boolean().optional(), name: z.string().max(100).optional(), npc: NpcInput.optional(), hidden: z.boolean().optional(), hpView: z.enum(['exact', 'status', 'none']).optional() })
+      .object({ monsterId: z.string().optional(), count: z.number().int().min(1).max(30).optional(), rollHp: z.boolean().optional(), name: z.string().max(100).optional(), npc: NpcInput.optional(), hidden: z.boolean().optional(), ally: z.boolean().optional(), hpView: z.enum(['exact', 'status', 'none']).optional() })
       .parse(req.body);
     const created: NpcRow[] = [];
     const count = body.count ?? 1;
@@ -321,7 +321,7 @@ export function campaignRoutes(api: Api, deps: AppDeps) {
     if (body.monsterId) {
       const m = (await getContent(db, user.id, body.monsterId)).data as unknown as Monster;
       const baseName = body.name || m.name;
-      base = (n) => ({ ...npcFromMonster(m, count > 1 ? `${baseName} ${n}` : baseName, !!body.rollHp, deps.rng), hidden: !!body.hidden, ...(body.hpView ? { hpView: body.hpView } : {}) });
+      base = (n) => ({ ...npcFromMonster(m, count > 1 ? `${baseName} ${n}` : baseName, !!body.rollHp, deps.rng), hidden: !!body.hidden, ally: !!body.ally, ...(body.hpView ? { hpView: body.hpView } : {}) });
     } else if (body.npc) {
       const d = body.npc;
       base = (n) => ({
