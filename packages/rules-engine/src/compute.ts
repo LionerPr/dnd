@@ -356,6 +356,12 @@ export function computeSheet(c: Character, content: ContentIndex): Sheet {
       pendingChoices.push({ id, kind: 'feature', pick: count - chosen.length, of: available.filter((n) => !chosen.includes(n)), origin: `${f.origin}: ${f.name}`, featureId: f.id });
     }
   }
+  // Ручные правки игрока на листе: добавить/убрать владение навыком или спасброском, компетентность
+  for (const k of c.choices['manual.skills'] ?? []) if ((SKILL_KEYS as readonly string[]).includes(k)) profs.skill.add(k as Skill);
+  for (const k of c.choices['manual.skillsOff'] ?? []) profs.skill.delete(k as Skill);
+  for (const k of c.choices['manual.saves'] ?? []) if ((ABILITIES as readonly string[]).includes(k)) profs.save.add(k as Ability);
+  for (const k of c.choices['manual.savesOff'] ?? []) profs.save.delete(k as Ability);
+  for (const k of c.choices['manual.expertise'] ?? []) if ((SKILL_KEYS as readonly string[]).includes(k)) expertise.add(k as Skill);
   // Компетентность: из навыков, которыми персонаж уже владеет
   for (const { effect: e, sourceLevel } of effects) {
     if (e.type !== 'expertise_choice') continue;

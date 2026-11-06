@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { XP_THRESHOLDS } from '@dnd/rules-engine';
-import { ArrowLeft, ArrowUpCircle, Copy, Download, Moon, Sparkles, Sunrise, Trash2 } from 'lucide-react';
+import { ArrowLeft, ArrowUpCircle, Check, Copy, Download, Moon, Pencil, Sparkles, Sunrise, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { api } from '../api/client';
@@ -32,6 +32,8 @@ export function CharacterPage() {
   const roll = useRoller(q.data?.campaignId, id);
   const [rest, setRest] = useState(false);
   const [levelUp, setLevelUp] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [nameDraft, setNameDraft] = useState<string | null>(null);
   const tab = (params.get('tab') as Tab) || 'combat';
   const setTab = (t: Tab) => setParams(t === 'combat' ? {} : { tab: t }, { replace: true });
 
@@ -97,7 +99,29 @@ export function CharacterPage() {
               <ArrowLeft /> В комнату кампании
             </Link>
           )}
-          <h1>{c.name}</h1>
+          {nameDraft !== null ? (
+            <form
+              className="row"
+              onSubmit={(e) => {
+                e.preventDefault();
+                const n = nameDraft.trim();
+                if (n && n !== c.name) save((d) => ({ ...d, name: n }));
+                setNameDraft(null);
+              }}
+            >
+              <input className="input name-input" value={nameDraft} maxLength={80} autoFocus onChange={(e) => setNameDraft(e.target.value)} onKeyDown={(e) => e.key === 'Escape' && setNameDraft(null)} />
+              <button className="btn icon" title="Сохранить имя"><Check /></button>
+            </form>
+          ) : (
+            <h1 className="row" style={{ gap: 8 }}>
+              {c.name}
+              {canEdit && (
+                <button className="btn ghost icon sm" title="Переименовать" onClick={() => setNameDraft(c.name)}>
+                  <Pencil />
+                </button>
+              )}
+            </h1>
+          )}
           <div className="meta">
             {[raceName, classLine, c.background, c.alignment].filter(Boolean).join(' · ') || 'Раса и класс не выбраны'}
           </div>
@@ -151,7 +175,14 @@ export function CharacterPage() {
       <Vitals view={view} canEdit={canEdit} cmd={cmd.mutate} roll={roll} />
 
       <div className="sheet-body">
-        <Abilities sheet={sheet} roll={roll} />
+        <div>
+        {canEdit && configured && (
+          <button className={`btn sm ${editing ? 'accent' : 'ghost'}`} style={{ marginBottom: 8 }} onClick={() => setEditing(!editing)}>
+            {editing ? <><Check /> Готово</> : <><Pencil /> Править характеристики и навыки</>}
+          </button>
+        )}
+        <Abilities sheet={sheet} roll={roll} edit={editing ? { c, save } : undefined} />
+        </div>
         <div>
           <Tabs tabs={tabs} value={tab} onChange={setTab} />
           {tab === 'combat' && <CombatTab view={view} canEdit={canEdit} cmd={cmd.mutate} roll={roll} />}

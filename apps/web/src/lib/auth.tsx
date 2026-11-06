@@ -18,7 +18,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const me = useQuery({ queryKey: ['me'], queryFn: () => api<{ user: User | null }>('/auth/me'), staleTime: Infinity });
   const set = (user: User | null) => {
     resetSocket();
-    qc.clear();
+    // qc.clear() would drop the ['me'] query the hook is subscribed to, so the
+    // new user would land in a fresh cache entry nobody watches. Keep ['me'].
+    qc.cancelQueries();
+    qc.removeQueries({ predicate: (q) => q.queryKey[0] !== 'me' });
     qc.setQueryData(['me'], { user });
   };
   const value: AuthState = {

@@ -332,8 +332,20 @@ export function campaignRoutes(api: Api, deps: AppDeps) {
         ...(d.hpView || body.hpView ? { hpView: (d.hpView ?? body.hpView)! } : {}),
       });
     } else throw new HttpError(400, 'Нужен монстр из бестиария или данные существа');
+    // Одинаковые имена выглядят как дубли карточек — нумеруем: «Гоблин 2», «Гоблин 3»…
+    const taken = new Set((await db.query<{ name: string }>(`SELECT data->>'name' AS name FROM npcs WHERE campaign_id = $1`, [id])).map((r) => r.name));
+    const uniqueName = (name: string) => {
+      if (!taken.has(name)) return name;
+      const stem = name.replace(/ \d+$/, '');
+      let k = 2;
+      while (taken.has(`${stem} ${k}`)) k++;
+      return `${stem} ${k}`;
+    };
     for (let n = 1; n <= count; n++) {
-      const row: NpcRow = { id: nanoid(10), campaign_id: id, data: base(n), created_at: new Date().toISOString() };
+      const data = base(n);
+      data.name = uniqueName(data.name);
+      taken.add(data.name);
+      const row: NpcRow = { id: nanoid(10), campaign_id: id, data, created_at: new Date().toISOString() };
       await db.query(`INSERT INTO npcs (id, campaign_id, data) VALUES ($1, $2, $3)`, [row.id, id, row.data]);
       created.push(row);
       await broadcastNpc(deps, row);

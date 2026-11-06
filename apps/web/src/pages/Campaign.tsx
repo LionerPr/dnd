@@ -899,7 +899,7 @@ function AddNpcModal({ campaignId, onClose, onDone }: { campaignId: string; onCl
       onClose={onClose}
       wide
       footer={
-        <button className="btn primary" disabled={!ok || add.isPending} onClick={() => add.mutate()}>
+        <button className="btn primary" disabled={!ok || add.isPending} onClick={() => !add.isPending && add.mutate()}>
           <Plus /> Добавить{count > 1 ? ` ×${count}` : ''}
         </button>
       }

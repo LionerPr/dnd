@@ -360,3 +360,17 @@ describe('оружие монаха', () => {
     expect(a.versatile).toBe('1к8+3');
   });
 });
+
+describe('ручные правки владений', () => {
+  it('добавляет и убирает навыки, спасброски и компетентность', () => {
+    const c = torin();
+    c.choices = { ...c.choices, 'manual.skills': ['stealth'], 'manual.expertise': ['stealth'], 'manual.skillsOff': ['athletics'], 'manual.saves': ['wis'], 'manual.savesOff': ['str'] };
+    const s = computeSheet(c, content);
+    const sk = (k: string) => s.skills.find((x) => x.key === k)!;
+    expect(sk('stealth').expertise).toBe(true);
+    expect(sk('stealth').bonus).toBe(s.abilities.dex.mod + 4);
+    expect(sk('athletics').proficient).toBe(false);
+    expect(s.abilities.wis.saveProficient).toBe(true);
+    expect(s.abilities.str.saveProficient).toBe(false);
+  });
+});
