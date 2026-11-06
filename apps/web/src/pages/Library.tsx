@@ -5,6 +5,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { api, type ContentRow } from '../api/client';
 import { Empty, Field, Loading, Modal, Segmented, Tabs, useToast } from '../components/ui';
 import { KIND_NAMES, levelName, plural, schoolName } from '../lib/format';
+import { SpellCard } from '../components/sheet/SpellsTab';
 import { useAuth } from '../lib/auth';
 import { useContentList } from '../lib/hooks';
 
@@ -23,9 +24,9 @@ function rowMeta(r: ContentRow) {
     case 'monster':
       return [d.size, d.type, d.cr !== undefined && `ПО ${d.cr}`].filter(Boolean).join(' · ');
     case 'class':
-      return [d.hitDie && `к${d.hitDie}`, d.subclasses?.length && `${d.subclasses.length} ${plural(d.subclasses.length, 'подкласс', 'подкласса', 'подклассов')}`].filter(Boolean).join(' · ');
+      return [d.hitDie && `к${d.hitDie}`, d.subclassCount > 0 && `${d.subclassCount} ${plural(d.subclassCount, 'подкласс', 'подкласса', 'подклассов')}`].filter(Boolean).join(' · ');
     case 'race':
-      return [d.speed && `${d.speed} фт`, d.subraces?.length && `${d.subraces.length} ${plural(d.subraces.length, 'разновидность', 'разновидности', 'разновидностей')}`].filter(Boolean).join(' · ');
+      return [d.speed && `${d.speed} фт`, d.subraceCount > 0 && `${d.subraceCount} ${plural(d.subraceCount, 'разновидность', 'разновидности', 'разновидностей')}`].filter(Boolean).join(' · ');
     case 'item':
       return [ITEM_CATEGORIES[d.category], d.rarity, d.weapon?.damage].filter(Boolean).join(' · ');
     default:
@@ -41,6 +42,8 @@ export function LibraryPage() {
   const [q, setQ] = useState('');
   const [mine, setMine] = useState<'all' | 'mine'>('all');
   const [level, setLevel] = useState<string>('any');
+  const [classId, setClassId] = useState('');
+  const classList = useContentList('class');
   const [importOpen, setImportOpen] = useState(false);
   const list = useContentList(kind);
 
@@ -48,6 +51,7 @@ export function LibraryPage() {
     .filter((r) => r.name.toLowerCase().includes(q.trim().toLowerCase()))
     .filter((r) => mine === 'all' || r.owner_id === user?.id)
     .filter((r) => kind !== 'spell' || level === 'any' || String(r.data?.level ?? 0) === level)
+    .filter((r) => kind !== 'spell' || !classId || (r.data?.classes ?? []).includes(classId))
     .sort((a, b) => (kind === 'spell' ? (a.data.level ?? 0) - (b.data.level ?? 0) : 0) || a.name.localeCompare(b.name, 'ru'));
 
   return (
@@ -80,6 +84,16 @@ export function LibraryPage() {
             {Array.from({ length: 10 }, (_, i) => (
               <option key={i} value={i}>
                 {levelName(i)}
+              </option>
+            ))}
+          </select>
+        )}
+        {kind === 'spell' && (
+          <select className="select" style={{ width: 'auto' }} value={classId} onChange={(e) => setClassId(e.target.value)} aria-label="Класс">
+            <option value="">Все классы</option>
+            {(classList.data?.items ?? []).map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
               </option>
             ))}
           </select>
@@ -214,7 +228,7 @@ function ImportModal({ onClose }: { onClose: () => void }) {
               />
             </div>
           </Field>
-          <p className="small muted">Сейчас разбираются расы и классы. Заклинания, существа и предметы пока можно завести вручную.</p>
+          <p className="small muted">Разбираются расы, классы (с подклассами) и заклинания. Существ и предметы пока можно завести вручную.</p>
         </>
       ) : (
         <div className="stack">
@@ -235,6 +249,11 @@ function ImportModal({ onClose }: { onClose: () => void }) {
               <PreviewFeatures features={d.features} />
               {d.subraces?.length > 0 && <div className="small muted">Разновидности: {d.subraces.map((s: { name: string }) => s.name).join(', ')}</div>}
             </>
+          )}
+          {preview.kind === 'spell' && (
+            <div className="panel panel-pad">
+              <SpellCard spell={d} />
+            </div>
           )}
           {preview.kind === 'class' && (
             <>
@@ -342,8 +361,11 @@ function CatalogPanel() {
               <button className="btn" disabled={start.isPending} onClick={() => start.mutate(['class'])}>
                 Все классы
               </button>
-              <button className="btn primary" disabled={start.isPending} onClick={() => start.mutate(['race', 'class'])}>
-                Расы и классы
+              <button className="btn" disabled={start.isPending} onClick={() => start.mutate(['spell'])}>
+                Все заклинания
+              </button>
+              <button className="btn primary" disabled={start.isPending} onClick={() => start.mutate(['race', 'class', 'spell'])}>
+                Всё сразу
               </button>
             </>
           )}

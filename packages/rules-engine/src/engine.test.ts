@@ -217,3 +217,26 @@ describe('кубики', () => {
     expect(() => roll('2к6+abc')).toThrow();
   });
 });
+
+describe('увеличение характеристик', () => {
+  const fighter: CharacterClass = {
+    ...barbarian,
+    id: 'fighter',
+    name: 'Воин',
+    features: [{ id: 'asi', name: 'Увеличение характеристик', description: '', level: 4 }],
+    levels: [{ level: 4, features: ['asi'] }, { level: 6, features: ['asi'] }, { level: 8, features: ['asi'] }],
+  };
+  const idx: ContentIndex = { ...content, classes: new Map([[fighter.id, fighter]]) };
+  const hero = (choices: Record<string, string[]>): Character => ({ ...torin(), raceId: undefined, subraceId: undefined, classes: [{ classId: 'fighter', level: 6 }], choices });
+
+  it('появляется выбор на каждом открытом уровне', () => {
+    const s = computeSheet(hero({}), idx);
+    expect(s.pendingChoices.filter((p) => p.asi).map((p) => p.id)).toEqual(['asi.fighter.4', 'asi.fighter.6']);
+  });
+
+  it('+2 к одной характеристике и черта вместо второго выбора', () => {
+    const s = computeSheet(hero({ 'asi.fighter.4': ['str', 'str'], 'asi.fighter.6': ['feat:tough:Крепкий'] }), idx);
+    expect(s.abilities.str.score).toBe(17);
+    expect(s.pendingChoices.some((p) => p.asi)).toBe(false);
+  });
+});

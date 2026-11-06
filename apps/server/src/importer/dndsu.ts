@@ -316,6 +316,7 @@ export function parseClass(html: string, url: string): CharacterClass {
   // Таблица уровней
   const levels: ClassLevel[] = [];
   const table = $('table.class_table').first();
+  table.find('br').replaceWith(' ');
   const headers = table.find('tr.table_header td').map((_, td) => text($(td).find('.long').text() || $(td).text())).get();
   table.find('tr').not('.table_header').each((_, tr) => {
     const cells = $(tr).children('td');
@@ -411,4 +412,134 @@ export function detectKind(url: string): 'race' | 'class' | 'spell' | 'monster' 
   if (p.startsWith('/bestiary/')) return 'monster';
   if (p.startsWith('/items/')) return 'item';
   return null;
+}
+
+// ---------- Заклинания ----------
+
+const SCHOOL_WORDS: [RegExp, string][] = [
+  [/ограждени/i, 'abjuration'],
+  [/вызов/i, 'conjuration'],
+  [/прорицани/i, 'divination'],
+  [/очаровани/i, 'enchantment'],
+  [/воплощени/i, 'evocation'],
+  [/иллюзи/i, 'illusion'],
+  [/некромант/i, 'necromancy'],
+  [/преобразовани/i, 'transmutation'],
+];
+
+const DICE = String.raw`\d+к\d+(?:\s*\+\s*\d+)?`;
+
+export interface ParsedSpell {
+  kind: 'spell';
+  id: string;
+  name: string;
+  nameEn?: string;
+  source: 'dnd.su';
+  sourceUrl: string;
+  book?: string;
+  level: number;
+  school: string;
+  castingTime: string;
+  range: string;
+  components: { v: boolean; s: boolean; m?: string };
+  duration: string;
+  concentration: boolean;
+  ritual: boolean;
+  /** Названия классов со страницы; при загрузке в библиотеку превращаются в id классов */
+  classNames: string[];
+  subclassNames: string[];
+  classes: string[];
+  description: string;
+  higherLevels?: string;
+  damage?: { dice: string; type?: string; perSlotAbove?: string; cantripScaling?: boolean };
+  heal?: { dice: string; perSlotAbove?: string };
+  save?: Ability;
+  attack?: 'melee' | 'ranged';
+}
+
+export function parseSpell(html: string, url: string): ParsedSpell {
+  const $ = cheerio.load(html);
+  const card = $('.card[data-cardlink^="/spells/"]').first();
+  const titleEl = card.find('h2.card-title [data-copy]').first();
+  const full = text(titleEl.text() || card.find('h2.card-title').first().text());
+  if (!full) throw new Error('не нашлось названия заклинания');
+  const m = full.match(/^(.*?)\s*\[(.+?)\]\s*$/);
+  const name = (m ? m[1] : full)!.trim();
+  const book = card.find('h2.card-title .source-plaque').first().attr('title');
+
+  const params = card.find('ul.params').first();
+  const field = (label: string) => {
+    let out = '';
+    params.children('li').each((_, li) => {
+      const strong = text($(li).find('strong').first().text());
+      if (strong.replace(/:$/, '').toLowerCase() === label) out = text($(li).text()).slice(strong.length).trim();
+    });
+    return out;
+  };
+  const head = text(params.find('li.size-type-alignment').first().text());
+  const level = /заговор/i.test(head) ? 0 : Number(head.match(/(\d)\s*уровень/)?.[1] ?? 0);
+  const school = SCHOOL_WORDS.find(([re]) => re.test(head))?.[1] ?? 'evocation';
+  const ritual = /ритуал/i.test(head);
+  const comps = field('компоненты');
+  const material = comps.match(/М\s*\(([\s\S]*)\)\s*$/)?.[1];
+  const durationRaw = field('длительность');
+  const concentration = /концентрац/i.test(durationRaw);
+  const duration = durationRaw.replace(/^концентрация,\s*/i, '').replace(/^вплоть до/i, 'Вплоть до');
+  const splitList = (s: string) => s.split(',').map((x) => x.trim()).filter(Boolean);
+
+  const desc = params.find('[itemprop="description"]').first();
+  const paras: string[] = [];
+  let higherLevels: string | undefined;
+  desc.children().each((_, el) => {
+    const t = text($(el).text());
+    if (!t) return;
+    if (/^на больших уровнях\.?/i.test(t)) higherLevels = t.replace(/^на больших уровнях\.?\s*/i, '');
+    else paras.push(t);
+  });
+  const description = paras.join('\n\n') || text(desc.text());
+  const all = `${description} ${higherLevels ?? ''}`;
+
+  const spell: ParsedSpell = {
+    kind: 'spell',
+    id: `dndsu-spell-${new URL(url).pathname.split('/').filter(Boolean).pop()}`,
+    name,
+    nameEn: m?.[2],
+    source: 'dnd.su',
+    sourceUrl: url,
+    book,
+    level,
+    school,
+    castingTime: field('время накладывания'),
+    range: field('дистанция'),
+    components: { v: /(^|,\s*)В(,|$|\s)/.test(comps), s: /(^|,\s*)С(,|$|\s)/.test(comps), ...(material ? { m: material.trim() } : {}) },
+    duration: duration || durationRaw,
+    concentration,
+    ritual,
+    classNames: splitList(field('классы')),
+    subclassNames: splitList(field('подклассы')),
+    classes: [],
+    description,
+    ...(higherLevels ? { higherLevels } : {}),
+  };
+
+  const dmgA = description.match(new RegExp(`(${DICE})\\s+урона\\s+([а-яё]+(?:\\s+[а-яё]+)?)`, 'i'));
+  const dmgB = description.match(new RegExp(`урона?\\s+([а-яё]+(?:\\s+[а-яё]+)?)\\s+(${DICE})`, 'i'));
+  const dmg = dmgA ? [dmgA[1]!, dmgA[2]!] : dmgB ? [dmgB[2]!, dmgB[1]!] : null;
+  if (dmg) {
+    const type = DAMAGE_WORDS.find(([re]) => re.test(dmg[1]!))?.[1];
+    const per = higherLevels?.match(new RegExp(`урон[^.]*?увеличивается\\s+на\\s+(${DICE})`, 'i'))?.[1];
+    const cantripScaling = level === 0 && /достига\S*\s+5[-\s]/i.test(all);
+    spell.damage = { dice: dmg[0]!.replace(/\s+/g, ''), ...(type ? { type } : {}), ...(per ? { perSlotAbove: per.replace(/\s+/g, '') } : {}), ...(cantripScaling ? { cantripScaling } : {}) };
+  }
+  const heal = description.match(new RegExp(`восстанавлива\\S*\\s+(?:количество\\s+хитов,\\s+равное\\s+|хиты\\s+в\\s+количестве\\s+|)(${DICE})`, 'i'));
+  if (heal) {
+    const per = higherLevels?.match(new RegExp(`(?:лечени|восстан)[^.]*?увеличивается\\s+на\\s+(${DICE})`, 'i'))?.[1];
+    spell.heal = { dice: heal[1]!.replace(/\s+/g, ''), ...(per ? { perSlotAbove: per.replace(/\s+/g, '') } : {}) };
+  }
+  const save = all.match(/спасброс\S*\s+([А-ЯЁ][а-яё]+)/);
+  const ab = save ? abilityFromWord(save[1]!) : undefined;
+  if (ab) spell.save = ab;
+  if (/рукопашную\s+атаку\s+заклинанием/i.test(all)) spell.attack = 'melee';
+  else if (/дальнобойную\s+атаку\s+заклинанием/i.test(all)) spell.attack = 'ranged';
+  return spell;
 }

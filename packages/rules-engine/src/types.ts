@@ -31,6 +31,8 @@ export interface Feature {
   effects?: Effect[];
   /** Опциональное правило (например, из «Котла Таши»): включается в настройках персонажа */
   optional?: boolean;
+  /** «Увеличение характеристик»: на каждом уровне, где умение открывается, игрок выбирает +2/+1+1 или черту */
+  asi?: boolean;
 }
 
 // ---------- Контент: расы, классы, заклинания, предметы, монстры ----------
@@ -113,10 +115,15 @@ export interface Spell extends ContentMeta {
   concentration: boolean;
   ritual: boolean;
   classes: string[];
+  /** Как на странице источника: «волшебник», «путь четырёх стихий (монах)» */
+  classNames?: string[];
+  subclassNames?: string[];
+  nameEn?: string;
   description: string;
   higherLevels?: string;
   /** Формула урона/лечения для кнопки «сотворить», например «8к6» */
-  damage?: { dice: string; type?: DamageType; perSlotAbove?: string };
+  /** cantripScaling: заговор усиливается на 5, 11 и 17 уровнях персонажа */
+  damage?: { dice: string; type?: DamageType; perSlotAbove?: string; cantripScaling?: boolean };
   heal?: { dice: string; perSlotAbove?: string };
   save?: Ability;
   attack?: 'melee' | 'ranged';

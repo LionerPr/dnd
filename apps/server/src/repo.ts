@@ -46,7 +46,10 @@ export async function listContent(db: Db, userId: string, opts: { kind?: string;
   params.push(Math.min(opts.limit ?? 100, 500), opts.offset ?? 0);
   return db.query<ContentRow>(
     `SELECT c.id, c.kind, c.name, c.owner_id, c.campaign_id, c.visibility, c.source, c.source_url, c.updated_at,
-       c.data - 'description' - 'features' - 'traits' - 'actions' AS data
+       (c.data - 'description' - 'features' - 'traits' - 'actions' - 'levels' - 'higherLevels' - 'subclasses' - 'subraces' - 'reactions' - 'legendary')
+         || jsonb_build_object(
+              'subclassCount', jsonb_array_length(COALESCE(c.data->'subclasses', '[]'::jsonb)),
+              'subraceCount', jsonb_array_length(COALESCE(c.data->'subraces', '[]'::jsonb))) AS data
      FROM content c WHERE ${where} ORDER BY c.name LIMIT $${params.length - 1} OFFSET $${params.length}`,
     params,
   );

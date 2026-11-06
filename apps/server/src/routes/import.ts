@@ -3,13 +3,14 @@ import { z } from 'zod';
 import type { AppDeps } from '../app.js';
 import { requireUser } from '../auth.js';
 import { forbidden, HttpError } from '../errors.js';
-import { detectKind, parseClass, parseRace } from '../importer/dndsu.js';
+import { detectKind, parseClass, parseRace, parseSpell } from '../importer/dndsu.js';
 import { assertDndSuUrl, fetchPage, sitemapUrls } from '../importer/fetch.js';
 import { upsertLibraryContent } from '../repo.js';
 
 const PARSERS = {
   race: parseRace,
   class: parseClass,
+  spell: parseSpell,
 } as const;
 type ParsableKind = keyof typeof PARSERS;
 
@@ -35,7 +36,23 @@ interface Job {
   startedAt: string;
 }
 
-const SECTION_FOR: Record<ParsableKind, string> = { race: 'race', class: 'class' };
+const SECTION_FOR: Record<ParsableKind, string> = { race: 'race', class: 'class', spell: 'spells' };
+/** Порядок загрузки: заклинаниям нужны уже загруженные классы, чтобы связаться с ними */
+const ORDER: ParsableKind[] = ['race', 'class', 'spell'];
+
+/** Названия классов со страницы заклинания → id классов из общей библиотеки */
+async function linkSpellClasses(db: AppDeps['db'], data: Record<string, unknown>) {
+  const names = (data.classNames as string[] | undefined) ?? [];
+  if (!names.length) return data;
+  const rows = await db.query<{ id: string; name: string }>(`SELECT id, name FROM content WHERE kind = 'class' AND owner_id IS NULL`);
+  const byName = new Map(rows.map((r) => [r.name.toLowerCase(), r.id]));
+  return { ...data, classes: names.map((n) => byName.get(n.toLowerCase())).filter(Boolean) };
+}
+
+async function store(db: AppDeps['db'], kind: ParsableKind, url: string, data: Record<string, unknown>) {
+  const linked = kind === 'spell' ? await linkSpellClasses(db, data) : data;
+  return upsertLibraryContent(db, kind, linked.name as string, url, linked as never);
+}
 
 export function importRoutes(api: FastifyInstance, { db }: AppDeps) {
   let job: Job | null = null;
@@ -58,7 +75,8 @@ export function importRoutes(api: FastifyInstance, { db }: AppDeps) {
         throw new HttpError(502, `${(e as Error).message}. Можно сохранить страницу в браузере и загрузить файл.`);
       }
     }
-    return { url, ...parse(url, html) };
+    const parsed = parse(url, html);
+    return { url, kind: parsed.kind, data: parsed.kind === 'spell' ? await linkSpellClasses(db, parsed.data as never) : parsed.data };
   });
 
   /** Сразу положить в общую библиотеку (только администратор). */
@@ -68,7 +86,7 @@ export function importRoutes(api: FastifyInstance, { db }: AppDeps) {
     const { url, html } = z.object({ url: z.string().max(500), html: z.string().max(5_000_000).optional() }).parse(req.body);
     const clean = assertDndSuUrl(url).toString();
     const parsed = parse(clean, html ?? (await fetchPage(clean)));
-    const id = await upsertLibraryContent(db, parsed.kind, parsed.data.name, clean, parsed.data as never);
+    const id = await store(db, parsed.kind, clean, parsed.data as never);
     return { id, kind: parsed.kind, name: parsed.data.name };
   });
 
@@ -76,10 +94,15 @@ export function importRoutes(api: FastifyInstance, { db }: AppDeps) {
   api.post('/import/catalog', async (req) => {
     const user = requireUser(req);
     if (!user.isAdmin) throw forbidden('Каталог загружает администратор');
-    const { kinds } = z.object({ kinds: z.array(z.enum(['race', 'class'])).min(1) }).parse(req.body);
+    const { kinds } = z.object({ kinds: z.array(z.enum(['race', 'class', 'spell'])).min(1) }).parse(req.body);
     if (job?.status === 'running') throw new HttpError(409, 'Загрузка уже идёт');
-    const map = await sitemapUrls();
-    const urls = kinds.flatMap((k) => map[SECTION_FOR[k]] ?? []);
+    let map: Record<string, string[]>;
+    try {
+      map = await sitemapUrls();
+    } catch (e) {
+      throw new HttpError(502, `dnd.su не отвечает: ${(e as Error).message}`);
+    }
+    const urls = ORDER.filter((k) => kinds.includes(k)).flatMap((k) => map[SECTION_FOR[k]] ?? []);
     const current: Job = { id: String(Date.now()), kinds, total: urls.length, done: 0, failed: [], status: 'running', startedAt: new Date().toISOString() };
     job = current;
     void (async () => {
@@ -87,7 +110,7 @@ export function importRoutes(api: FastifyInstance, { db }: AppDeps) {
         if (current.status !== 'running') break;
         try {
           const parsed = parse(url, await fetchPage(url, { retries: 2 }));
-          await upsertLibraryContent(db, parsed.kind, parsed.data.name, url, parsed.data as never);
+          await store(db, parsed.kind, url, parsed.data as never);
         } catch (e) {
           current.failed.push({ url, error: (e as Error).message });
         }

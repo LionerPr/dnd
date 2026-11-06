@@ -6,6 +6,7 @@ import { Link } from 'react-router-dom';
 import { api, type CharacterView, type ContentRow } from '../../api/client';
 import { signed } from '../../lib/format';
 import { useContentList } from '../../lib/hooks';
+import { ContentPicker } from '../ContentPicker';
 import { Field, NumberInput, Segmented } from '../ui';
 
 type Save = (u: (c: Character) => Character) => void;
@@ -18,6 +19,7 @@ function useFull<T>(id: string | undefined) {
 }
 
 const choiceLabel = (kind: string, key: string) => {
+  if (key.startsWith('feat:')) return `Черта: ${key.split(':').slice(2).join(':') || 'без названия'}`;
   if (kind === 'skill') return (SKILLS as Record<string, { name: string }>)[key]?.name ?? key;
   if (kind === 'ability') return ABILITY_NAMES[key as Ability]?.full ?? key;
   return key.replace(/^tools\./, '');
@@ -31,6 +33,7 @@ export function BuildTab({ view, save }: { view: CharacterView; save: Save }) {
   const race = useFull<Race>(c.raceId);
   const [method, setMethod] = useState<'manual' | 'standard' | 'points'>('manual');
   const [newFeature, setNewFeature] = useState({ name: '', description: '' });
+  const [featFor, setFeatFor] = useState<string | null>(null);
 
   const points = ABILITIES.reduce((s, a) => s + (POINT_COST[c.baseAbilities[a]] ?? 99), 0);
   const setAbility = (a: Ability, v: number) => save((d) => ({ ...d, baseAbilities: { ...d.baseAbilities, [a]: v } }));
@@ -156,11 +159,21 @@ export function BuildTab({ view, save }: { view: CharacterView; save: Save }) {
               return (
                 <div key={p.id} className="pending">
                   <div style={{ marginBottom: 8 }}>
-                    <b>{p.origin}</b>: выберите ещё {p.pick} ({p.kind === 'skill' ? 'навыки' : p.kind === 'tool' ? 'инструменты' : p.kind === 'ability' ? 'характеристики' : p.kind})
+                    <b>{p.origin}</b>:{' '}
+                    {p.asi
+                      ? chosen.length
+                        ? 'выберите ещё одну характеристику (можно ту же, тогда будет +2)'
+                        : '+2 к одной характеристике (нажмите её дважды), по +1 к двум — или возьмите черту'
+                      : `выберите ещё ${p.pick} (${p.kind === 'skill' ? 'навыки' : p.kind === 'tool' ? 'инструменты' : p.kind === 'ability' ? 'характеристики' : p.kind})`}
                   </div>
                   <div className="row wrap" style={{ gap: 6 }}>
+                    {p.asi && !chosen.length && (
+                      <button className="chip accent" onClick={() => setFeatFor(p.id)}>
+                        <Plus size={12} /> Черта
+                      </button>
+                    )}
                     {options
-                      .filter((o) => !chosen.includes(o))
+                      .filter((o) => p.asi || !chosen.includes(o))
                       .map((o) => (
                         <button key={o} className="chip" onClick={() => save((d) => ({ ...d, choices: { ...d.choices, [p.id]: [...(d.choices[p.id] ?? []), o] } }))}>
                           {choiceLabel(p.kind, o)}
@@ -174,11 +187,23 @@ export function BuildTab({ view, save }: { view: CharacterView; save: Save }) {
               .filter(([, v]) => v.length)
               .map(([id, values]) => (
                 <div key={id} className="row wrap" style={{ gap: 6 }}>
-                  <span className="small muted">{id.startsWith('class.') ? 'Навыки класса' : 'Выбрано'}:</span>
-                  {values.map((v) => (
-                    <span key={v} className="chip accent">
+                  <span className="small muted">{id.startsWith('class.') ? 'Навыки класса' : id.startsWith('asi.') ? `Увеличение характеристик, ${id.split('.').pop()} ур.` : 'Выбрано'}:</span>
+                  {values.map((v, i) => (
+                    <span key={`${v}-${i}`} className="chip accent">
                       {choiceLabel(Object.keys(SKILLS).includes(v) ? 'skill' : ABILITIES.includes(v as Ability) ? 'ability' : 'tool', v)}
-                      <button className="btn ghost xs icon" style={{ height: 18, width: 18, marginRight: -6 }} onClick={() => save((d) => ({ ...d, choices: { ...d.choices, [id]: d.choices[id]!.filter((x) => x !== v) } }))} aria-label="Убрать">
+                      {id.startsWith('asi.') && values.filter((x) => x === v).length === 2 && i === values.indexOf(v) ? ' +2' : ''}
+                      <button
+                        className="btn ghost xs icon"
+                        style={{ height: 18, width: 18, marginRight: -6 }}
+                        onClick={() =>
+                          save((d) => ({
+                            ...d,
+                            choices: { ...d.choices, [id]: d.choices[id]!.filter((_, j) => j !== i) },
+                            featIds: v.startsWith('feat:') ? d.featIds.filter((f) => f !== v.split(':')[1]) : d.featIds,
+                          }))
+                        }
+                        aria-label="Убрать"
+                      >
                         <X size={12} />
                       </button>
                     </span>
@@ -279,6 +304,17 @@ export function BuildTab({ view, save }: { view: CharacterView; save: Save }) {
           <textarea className="textarea" placeholder="Описание" rows={3} value={newFeature.description} onChange={(e) => setNewFeature({ ...newFeature, description: e.target.value })} />
         </div>
       </div>
+      {featFor && (
+        <ContentPicker
+          kind="feat"
+          title="Черта вместо увеличения характеристик"
+          onClose={() => setFeatFor(null)}
+          onPick={(r) =>
+            r &&
+            save((d) => ({ ...d, featIds: [...d.featIds, r.id], choices: { ...d.choices, [featFor]: [`feat:${r.id}:${r.name}`] } }))
+          }
+        />
+      )}
     </div>
   );
 }

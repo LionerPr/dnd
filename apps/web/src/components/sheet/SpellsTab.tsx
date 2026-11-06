@@ -19,6 +19,13 @@ function scaledDice(base: string, per: string | undefined, extraLevels: number) 
   return `${base}+${Array.from({ length: extraLevels }, () => per).join('+')}`;
 }
 
+/** Заговоры: 2 кости с 5 уровня, 3 — с 11, 4 — с 17 */
+function cantripDice(dice: string, charLevel: number) {
+  const tier = charLevel >= 17 ? 4 : charLevel >= 11 ? 3 : charLevel >= 5 ? 2 : 1;
+  const m = dice.match(/^(\d+)([кd]\d+)(.*)$/);
+  return m && tier > 1 ? `${Number(m[1]) * tier}${m[2]}${m[3]}` : dice;
+}
+
 export function SpellCard({ spell }: { spell: Spell }) {
   const comps = [spell.components?.v && 'В', spell.components?.s && 'С', spell.components?.m && `М (${spell.components.m})`].filter(Boolean).join(', ');
   return (
@@ -40,6 +47,12 @@ export function SpellCard({ spell }: { spell: Spell }) {
           {spell.higherLevels}
         </div>
       )}
+      {(spell.classNames?.length || spell.subclassNames?.length) ? (
+        <div className="small muted">
+          {spell.classNames?.length ? <div>Классы: {spell.classNames.join(', ')}</div> : null}
+          {spell.subclassNames?.length ? <div>Подклассы: {spell.subclassNames.join(', ')}</div> : null}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -68,7 +81,7 @@ export function SpellsTab({ view, canEdit, cmd, roll, save }: { view: CharacterV
     if (spell.concentration) cmd({ type: 'concentration', spell: spell.name });
     const extra = level - spell.level;
     if (spell.attack && caster) roll(`1к20${caster.attackBonus >= 0 ? '+' : ''}${caster.attackBonus}`, `${spell.name}: атака`);
-    if (spell.damage) roll(scaledDice(spell.damage.dice, spell.damage.perSlotAbove, extra), `${spell.name}: урон`);
+    if (spell.damage) roll(spell.level === 0 && spell.damage.cantripScaling ? cantripDice(spell.damage.dice, sheet.level) : scaledDice(spell.damage.dice, spell.damage.perSlotAbove, extra), `${spell.name}: урон`);
     if (spell.heal) roll(scaledDice(spell.heal.dice, spell.heal.perSlotAbove, extra), `${spell.name}: лечение`);
     setOpen(null);
   };

@@ -95,6 +95,32 @@ function collectEffects(c: Character, content: ContentIndex, features: SourcedFe
   return effects;
 }
 
+const isAsi = (f: Feature) => f.asi || /^увеличение характеристик/i.test(f.name);
+
+/**
+ * Увеличение характеристик у класса: на 4, 8, 12… уровнях (по таблице класса) игрок
+ * распределяет +2 (одной +2 или двум по +1) либо берёт черту. Выбор хранится в choices[`asi.<класс>.<уровень>`].
+ */
+function asiEffects(c: Character, content: ContentIndex, effects: EffectWithLevel[]) {
+  const origins = new Map<Effect, string>();
+  for (const entry of c.classes) {
+    const cls = content.classes.get(entry.classId);
+    if (!cls) continue;
+    for (const f of cls.features.filter(isAsi)) {
+      if (f.effects?.some((e) => e.type === 'ability_bonus' || e.type === 'ability_choice')) continue;
+      const fromTable = cls.levels.filter((l) => l.features.includes(f.id)).map((l) => l.level);
+      const levels = fromTable.length ? fromTable : f.level ? [f.level] : [];
+      for (const lvl of levels) {
+        if (lvl > entry.level) continue;
+        const e: Effect = { type: 'ability_choice', id: `asi.${cls.id}.${lvl}`, pick: 2, value: 1 };
+        effects.push({ effect: e, sourceLevel: entry.level });
+        origins.set(e, `${cls.name}, ${lvl} уровень: увеличение характеристик`);
+      }
+    }
+  }
+  return origins;
+}
+
 export interface SkillValue {
   key: Skill;
   name: string;
@@ -160,7 +186,8 @@ export interface Sheet {
   /** Какие значения переопределены вручную */
   overridden: string[];
   /** Выборы, которые игрок ещё не сделал: id эффекта → сколько нужно выбрать */
-  pendingChoices: { id: string; kind: string; pick: number; of: string[] | 'any'; origin: string }[];
+  /** asi: можно вместо характеристик взять черту (значение выбора «feat:<id>:<название>») */
+  pendingChoices: { id: string; kind: string; pick: number; of: string[] | 'any'; origin: string; asi?: boolean }[];
 }
 
 function casterLevelFor(cls: CharacterClass, entryLevel: number, subclassCasting: Spellcasting | undefined, multiclass: boolean) {
@@ -176,6 +203,7 @@ export function computeSheet(c: Character, content: ContentIndex): Sheet {
   const pb = proficiencyBonus(level);
   const features = collectFeatures(c, content);
   const effects = collectEffects(c, content, features);
+  const asiOrigins = asiEffects(c, content, effects);
   const overridden: string[] = [];
   const ov = (key: string, value: number) => {
     const o = c.overrides[key];
@@ -228,10 +256,12 @@ export function computeSheet(c: Character, content: ContentIndex): Sheet {
       }
     }
     if (e.type === 'ability_choice') {
-      const chosen = c.choices[e.id]?.length ?? 0;
-      if (chosen < e.pick) {
-        const origin = features.find((f) => f.effects?.includes(e))?.origin ?? '';
-        pendingChoices.push({ id: e.id, kind: 'ability', pick: e.pick - chosen, of: e.from ?? [...ABILITIES], origin });
+      const values = c.choices[e.id] ?? [];
+      const tookFeat = values.some((v) => v.startsWith('feat:'));
+      if (!tookFeat && values.length < e.pick) {
+        const asi = asiOrigins.get(e);
+        const origin = asi ?? features.find((f) => f.effects?.includes(e))?.origin ?? '';
+        pendingChoices.push({ id: e.id, kind: 'ability', pick: e.pick - values.length, of: e.from ?? [...ABILITIES], origin, ...(asi ? { asi: true } : {}) });
       }
     }
     if (e.type === 'expertise') e.skills.forEach((s) => expertise.add(s));
