@@ -49,9 +49,24 @@ export function emitEvent(rt: AppDeps['rt'], ev: EventRow) {
   else rt.all(ev.campaign_id, 'event', ev);
 }
 
+export function namesFor(c: Character, index: Awaited<ReturnType<typeof contentIndexFor>>) {
+  const race = c.raceId ? index.races.get(c.raceId) : undefined;
+  return {
+    race: race?.name,
+    subrace: race?.subraces?.find((s) => s.id === c.subraceId)?.name,
+    classes: c.classes.map((cl) => {
+      const cls = index.classes.get(cl.classId);
+      return { id: cl.classId, name: cls?.name ?? '?', level: cl.level, subclass: cls?.subclasses.find((s) => s.id === cl.subclassId)?.name };
+    }),
+  };
+}
+
 export async function characterView(db: Db, row: CharacterRow) {
   const index = await contentIndexFor(db, [row.data]);
-  return { id: row.id, ownerId: row.owner_id, campaignId: row.campaign_id, version: row.version, data: row.data, sheet: computeSheet(row.data, index) };
+  return {
+    id: row.id, ownerId: row.owner_id, campaignId: row.campaign_id, version: row.version, data: row.data,
+    sheet: computeSheet(row.data, index), names: namesFor(row.data, index),
+  };
 }
 
 export async function broadcastCharacter(deps: AppDeps, row: CharacterRow) {

@@ -1,0 +1,160 @@
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { ArrowLeft, Copy, Download, Moon, Sparkles, Sunrise, Trash2 } from 'lucide-react';
+import { useState } from 'react';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { api } from '../api/client';
+import { Abilities } from '../components/sheet/Abilities';
+import { AwardsTab } from '../components/sheet/AwardsTab';
+import { BuildTab } from '../components/sheet/BuildTab';
+import { CombatTab } from '../components/sheet/CombatTab';
+import { FeaturesTab } from '../components/sheet/FeaturesTab';
+import { GearTab } from '../components/sheet/GearTab';
+import { NotesTab } from '../components/sheet/NotesTab';
+import { RestModal } from '../components/sheet/RestModal';
+import { SpellsTab } from '../components/sheet/SpellsTab';
+import { Vitals } from '../components/sheet/Vitals';
+import { ConfirmButton, Empty, Loading, Tabs, useToast } from '../components/ui';
+import { useCharacter, useCommand, useRoller, useSaveBuild } from '../lib/hooks';
+
+type Tab = 'combat' | 'spells' | 'features' | 'gear' | 'awards' | 'notes' | 'build';
+
+export function CharacterPage() {
+  const { id = '' } = useParams();
+  const [params, setParams] = useSearchParams();
+  const nav = useNavigate();
+  const toast = useToast();
+  const qc = useQueryClient();
+  const q = useCharacter(id);
+  const cmd = useCommand(id);
+  const save = useSaveBuild(q.data);
+  const roll = useRoller(q.data?.campaignId, id);
+  const [rest, setRest] = useState(false);
+  const tab = (params.get('tab') as Tab) || 'combat';
+  const setTab = (t: Tab) => setParams(t === 'combat' ? {} : { tab: t }, { replace: true });
+
+  const del = useMutation({
+    mutationFn: () => api(`/characters/${id}`, { method: 'DELETE' }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['characters'] });
+      nav('/');
+    },
+  });
+  const dup = useMutation({
+    mutationFn: () => api<{ id: string }>(`/characters/${id}/duplicate`, { body: {} }),
+    onSuccess: (r) => {
+      toast('Копия создана');
+      nav(`/characters/${r.id}`);
+    },
+  });
+
+  if (q.isLoading) return <Loading />;
+  if (q.error || !q.data)
+    return (
+      <main className="page">
+        <Empty title="Персонаж не найден">{(q.error as Error)?.message}</Empty>
+      </main>
+    );
+
+  const view = q.data;
+  const { data: c, sheet } = view;
+  const canEdit = view.access?.canEdit ?? true;
+  const isOwner = view.access?.owner ?? true;
+  const hasSpells = sheet.casters.length > 0 || c.spellsKnown.length > 0;
+  const configured = c.classes.length > 0;
+
+  const exportJson = () => {
+    const blob = new Blob([JSON.stringify(c, null, 2)], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `${c.name}.json`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  };
+
+  const tabs: { id: Tab; label: string; count?: number }[] = [
+    { id: 'combat', label: 'Бой' },
+    ...(hasSpells ? [{ id: 'spells' as Tab, label: 'Заклинания', count: c.spellsKnown.length || undefined }] : []),
+    { id: 'features', label: 'Умения', count: sheet.features.length || undefined },
+    { id: 'gear', label: 'Снаряжение' },
+    { id: 'awards', label: 'Достижения', count: view.awards?.length || undefined },
+    { id: 'notes', label: 'Описание' },
+    ...(canEdit ? [{ id: 'build' as Tab, label: 'Конструктор' }] : []),
+  ];
+
+  const names = view.names;
+  const raceName = names?.subrace ? `${names.race} (${names.subrace})` : names?.race;
+  const classLine = names?.classes.map((x) => `${x.name} ${x.level}${x.subclass ? ` · ${x.subclass}` : ''}`).join(' / ');
+
+  return (
+    <main className="page wide">
+      <div className="sheet-head">
+        <div>
+          {view.campaignId && (
+            <Link to={`/campaigns/${view.campaignId}`} className="btn ghost sm" style={{ marginLeft: -10, marginBottom: 6 }}>
+              <ArrowLeft /> В комнату кампании
+            </Link>
+          )}
+          <h1>{c.name}</h1>
+          <div className="meta">
+            {[raceName, classLine, c.background, c.alignment].filter(Boolean).join(' · ') || 'Раса и класс не выбраны'}
+          </div>
+        </div>
+        {canEdit && configured && (
+          <div className="row wrap">
+            <button
+              className={`btn ${c.state.inspiration ? 'accent' : ''}`}
+              onClick={() => cmd.mutate({ type: 'inspiration', value: !c.state.inspiration })}
+              title="Вдохновение"
+            >
+              <Sparkles /> {c.state.inspiration ? 'Вдохновлён' : 'Вдохновение'}
+            </button>
+            <button className="btn" onClick={() => setRest(true)}>
+              <Moon /> Короткий отдых
+            </button>
+            <button className="btn" onClick={() => cmd.mutate({ type: 'long_rest' }, { onSuccess: () => toast('Долгий отдых: силы восстановлены') })}>
+              <Sunrise /> Долгий отдых
+            </button>
+          </div>
+        )}
+      </div>
+
+      {!configured && canEdit && tab !== 'build' && (
+        <div className="pending" style={{ marginBottom: 18 }}>
+          Лист пока пуст. <button className="btn sm" onClick={() => setTab('build')}>Открыть конструктор</button> — выберите расу, класс и характеристики.
+        </div>
+      )}
+
+      <Vitals view={view} canEdit={canEdit} cmd={cmd.mutate} roll={roll} />
+
+      <div className="sheet-body">
+        <Abilities sheet={sheet} roll={roll} />
+        <div>
+          <Tabs tabs={tabs} value={tab} onChange={setTab} />
+          {tab === 'combat' && <CombatTab view={view} canEdit={canEdit} cmd={cmd.mutate} roll={roll} />}
+          {tab === 'spells' && <SpellsTab view={view} canEdit={canEdit} cmd={cmd.mutate} roll={roll} save={save} />}
+          {tab === 'features' && <FeaturesTab view={view} />}
+          {tab === 'gear' && <GearTab view={view} canEdit={canEdit} cmd={cmd.mutate} save={save} />}
+          {tab === 'awards' && <AwardsTab view={view} />}
+          {tab === 'notes' && <NotesTab view={view} canEdit={canEdit} save={save} />}
+          {tab === 'build' && canEdit && <BuildTab view={view} save={save} />}
+
+          {isOwner && (
+            <div className="row wrap" style={{ marginTop: 32, justifyContent: 'flex-end' }}>
+              <button className="btn ghost sm" onClick={exportJson}>
+                <Download /> Экспорт JSON
+              </button>
+              <button className="btn ghost sm" onClick={() => dup.mutate()}>
+                <Copy /> Копия
+              </button>
+              <ConfirmButton onConfirm={() => del.mutate()} confirm="Удалить навсегда?">
+                <Trash2 /> Удалить
+              </ConfirmButton>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {rest && <RestModal view={view} onClose={() => setRest(false)} onRest={(hitDice) => cmd.mutate({ type: 'short_rest', hitDice }, { onSuccess: () => setRest(false) })} />}
+    </main>
+  );
+}

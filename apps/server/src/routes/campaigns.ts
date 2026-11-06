@@ -27,6 +27,7 @@ import {
   characterView,
   emitEvent,
   logEvent,
+  namesFor,
   runCharacterCommand,
   runNpcCommand,
   type EventRow,
@@ -41,6 +42,14 @@ const Settings = z.object({
   allowedRaces: z.array(z.string()),
   allowedClasses: z.array(z.string()),
 }).partial();
+
+
+/** Бой глазами игроков: без скрытых существ; если ходит скрытое — подсветки хода нет (turn = -1). */
+function combatForPlayers(combat: Combat, hidden: Set<string>): Combat {
+  const current = combat.order[combat.turn]?.id;
+  const order = combat.order.filter((o) => !hidden.has(o.id));
+  return { ...combat, order, turn: order.findIndex((o) => o.id === current) };
+}
 
 const NpcInput = z.object({
   name: z.string().min(1).max(100),
@@ -103,7 +112,7 @@ export function campaignRoutes(api: FastifyInstance, deps: AppDeps) {
     );
     const chars = await db.query<CharacterRow>(`SELECT * FROM characters WHERE campaign_id = $1 ORDER BY updated_at`, [campaignId]);
     const index = await contentIndexFor(db, chars.map((c) => c.data));
-    const characters = chars.map((r) => ({ id: r.id, ownerId: r.owner_id, campaignId: r.campaign_id, version: r.version, data: r.data, sheet: computeSheet(r.data, index) }));
+    const characters = chars.map((r) => ({ id: r.id, ownerId: r.owner_id, campaignId: r.campaign_id, version: r.version, data: r.data, sheet: computeSheet(r.data, index), names: namesFor(r.data, index) }));
     const npcRows = await db.query<NpcRow>(`SELECT * FROM npcs WHERE campaign_id = $1 ORDER BY created_at`, [campaignId]);
     const npcs = role === 'dm' ? npcRows : npcRows.filter((n) => !n.data.hidden).map((n) => npcForPlayers(n, camp.settings));
     const achievements = await db.query(`SELECT * FROM achievements WHERE campaign_id = $1 ORDER BY created_at`, [campaignId]);
@@ -117,7 +126,7 @@ export function campaignRoutes(api: FastifyInstance, deps: AppDeps) {
       [campaignId],
     );
     return {
-      campaign: { id: camp.id, name: camp.name, description: camp.description, dmId: camp.dm_id, settings: camp.settings, combat: camp.combat, inviteCode: role === 'dm' ? camp.invite_code : undefined },
+      campaign: { id: camp.id, name: camp.name, description: camp.description, dmId: camp.dm_id, settings: camp.settings, combat: camp.combat && role !== 'dm' ? combatForPlayers(camp.combat, new Set(npcRows.filter((n) => n.data.hidden).map((n) => n.id))) : camp.combat, inviteCode: role === 'dm' ? camp.invite_code : undefined },
       role,
       members: members.map((m) => ({ userId: m.user_id, role: m.role, displayName: m.display_name })),
       characters,
@@ -134,7 +143,7 @@ export function campaignRoutes(api: FastifyInstance, deps: AppDeps) {
     const hidden = new Set(
       (await db.query<{ id: string }>(`SELECT id FROM npcs WHERE campaign_id = $1 AND (data->>'hidden')::boolean`, [camp.id])).map((r) => r.id),
     );
-    rt.players(camp.id, 'combat', { ...combat, order: combat.order.filter((o) => !hidden.has(o.id)) });
+    rt.players(camp.id, 'combat', combatForPlayers(combat, hidden));
   }
 
   // ---------- Кампании ----------

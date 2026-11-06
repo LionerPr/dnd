@@ -1,0 +1,284 @@
+/* ---------- Лист персонажа ---------- */
+
+.sheet-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 20px;
+}
+.sheet-head h1 { font-size: 40px; line-height: 1; }
+.sheet-head .meta { color: var(--muted); margin-top: 6px; font-size: 15px; }
+
+.vitals {
+  display: grid;
+  grid-template-columns: minmax(280px, 1.6fr) repeat(5, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 18px;
+}
+.vital {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  min-height: 86px;
+}
+.vital .v {
+  font-family: var(--font-display);
+  font-size: 34px;
+  font-weight: 600;
+  line-height: 1;
+  font-variant-numeric: lining-nums tabular-nums;
+}
+.vital .l { font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); font-weight: 600; margin-top: 6px; }
+.vital .s { font-size: 12px; color: var(--muted); }
+button.vital { cursor: pointer; font: inherit; color: inherit; }
+button.vital:hover { border-color: var(--line-strong); }
+.vital.overridden .v { color: var(--accent); }
+
+/* Хиты */
+.hp {
+  align-items: stretch;
+  text-align: left;
+  padding: 12px 14px;
+}
+.hp-top { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.hp-num { font-family: var(--font-display); font-size: 40px; font-weight: 600; line-height: 1; font-variant-numeric: lining-nums tabular-nums; }
+.hp-num small { font-size: 22px; color: var(--muted); font-weight: 500; }
+.hp-temp { color: var(--mana); font-weight: 600; font-size: 14px; }
+.hp-bar { height: 6px; background: var(--surface-2); border-radius: 3px; overflow: hidden; margin: 8px 0 10px; display: flex; }
+.hp-bar > i { display: block; height: 100%; transition: width 0.3s; }
+.hp-controls { display: flex; gap: 6px; align-items: center; }
+.hp-controls .input { width: 64px; height: 30px; }
+.hp.down { border-color: color-mix(in srgb, var(--danger) 50%, var(--line)); }
+
+.death-saves { display: flex; gap: 14px; align-items: center; justify-content: center; font-size: 12.5px; }
+.pips { display: inline-flex; gap: 4px; }
+.pip { width: 11px; height: 11px; border-radius: 50%; border: 1.5px solid var(--line-strong); }
+.pip.on.good { background: var(--good); border-color: var(--good); }
+.pip.on.bad { background: var(--danger); border-color: var(--danger); }
+
+.sheet-body {
+  display: grid;
+  grid-template-columns: 300px minmax(0, 1fr);
+  gap: 18px;
+  align-items: start;
+}
+
+/* Характеристики */
+.abilities { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.ability {
+  border: 1px solid var(--line);
+  background: var(--surface);
+  border-radius: var(--r-lg);
+  padding: 8px 6px 9px;
+  text-align: center;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+}
+.ability:hover { border-color: var(--line-strong); }
+.ability .ab { font-size: 11px; letter-spacing: 0.12em; color: var(--muted); font-weight: 600; }
+.ability .mod { font-family: var(--font-display); font-size: 30px; font-weight: 600; line-height: 1.1; font-variant-numeric: lining-nums; }
+.ability .score {
+  display: inline-block;
+  min-width: 30px;
+  padding: 0 6px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.skill-list { display: flex; flex-direction: column; }
+.skill {
+  display: grid;
+  grid-template-columns: 14px 36px 1fr auto;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 12px;
+  border: 0;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+  font-size: 13.5px;
+  border-radius: var(--r);
+}
+.skill:hover { background: var(--surface-2); }
+.skill .bonus { font-variant-numeric: tabular-nums; font-weight: 600; text-align: right; }
+.skill .ab { font-size: 11px; color: var(--muted); letter-spacing: 0.06em; }
+.prof-dot { width: 9px; height: 9px; border-radius: 50%; border: 1.5px solid var(--line-strong); }
+.prof-dot.on { background: var(--ink); border-color: var(--ink); }
+.prof-dot.exp { background: var(--accent); border-color: var(--accent); box-shadow: 0 0 0 2px var(--surface), 0 0 0 3px var(--accent); }
+
+/* Счётчики ресурсов и ячеек */
+.tracker { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 9px 14px; border-bottom: 1px solid var(--line); }
+.tracker:last-child { border-bottom: 0; }
+.boxes { display: flex; flex-wrap: wrap; gap: 5px; justify-content: flex-end; }
+.box {
+  width: 18px; height: 18px;
+  border: 1.5px solid var(--line-strong);
+  border-radius: 4px;
+  background: var(--surface);
+  cursor: pointer;
+  padding: 0;
+}
+.box.used { background: var(--surface-2); border-color: var(--line); position: relative; }
+.box.used::after { content: ''; position: absolute; inset: 3px; border-top: 1.5px solid var(--muted); transform: rotate(-45deg) translate(-2px, 3px); }
+.box:not(.used) { border-color: var(--accent); }
+.box:not(.used):hover { background: var(--accent-soft); }
+
+/* Атаки */
+.attack {
+  display: grid;
+  grid-template-columns: 1fr 70px 110px;
+  gap: 8px;
+  align-items: center;
+  padding: 9px 14px;
+  border-bottom: 1px solid var(--line);
+}
+.attack:last-child { border-bottom: 0; }
+.attack .name { font-weight: 600; }
+
+/* Умения */
+.feature { border-bottom: 1px solid var(--line); }
+.feature:last-child { border-bottom: 0; }
+.feature summary {
+  list-style: none;
+  cursor: pointer;
+  padding: 10px 14px;
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+.feature summary::-webkit-details-marker { display: none; }
+.feature summary:hover { background: var(--surface-2); }
+.feature summary .t { font-weight: 600; }
+.feature .body { padding: 0 14px 14px; white-space: pre-line; color: var(--ink-2); font-size: 14px; line-height: 1.6; }
+.feature[open] summary { background: none; }
+
+/* Заклинания */
+.spell-level-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 14px; background: var(--surface-2); border-bottom: 1px solid var(--line); }
+.spell-row { display: grid; grid-template-columns: 22px 1fr auto; gap: 10px; align-items: center; padding: 8px 14px; border-bottom: 1px solid var(--line); }
+.spell-row .name { font-weight: 600; cursor: pointer; }
+.spell-row .name:hover { color: var(--accent); }
+.spell-meta { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 16px; font-size: 13px; }
+.spell-meta b { color: var(--muted); font-weight: 600; margin-right: 6px; }
+
+/* Кубики */
+.roll-result { display: flex; align-items: baseline; gap: 10px; }
+.roll-result .total { font-family: var(--font-display); font-size: 30px; font-weight: 600; line-height: 1; }
+.roll-result .crit { color: var(--good); }
+.roll-result .fumble { color: var(--danger); }
+
+/* Деньги */
+.coins { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; }
+.coin { border: 1px solid var(--line); border-radius: var(--r); padding: 8px; text-align: center; }
+.coin .n { font-family: var(--font-display); font-size: 24px; font-weight: 600; font-variant-numeric: lining-nums tabular-nums; line-height: 1.1; }
+.coin .c { font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+.coin.gp .n { color: var(--accent); }
+
+/* Достижения */
+.award {
+  display: grid;
+  grid-template-columns: 44px 1fr;
+  gap: 14px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--line);
+}
+.award:last-child { border-bottom: 0; }
+.award-icon {
+  width: 44px; height: 44px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--accent);
+  color: var(--accent);
+  transform: rotate(45deg);
+  border-radius: 6px;
+}
+.award-icon > * { transform: rotate(-45deg); }
+.award h4 { font-size: 19px; }
+
+/* Конструктор */
+.build-section { padding: 18px 20px; border-bottom: 1px solid var(--line); }
+.build-section:last-child { border-bottom: 0; }
+.build-section h3 { margin-bottom: 12px; }
+.ability-edit { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 8px; }
+.ability-edit .cell { border: 1px solid var(--line); border-radius: var(--r); padding: 8px 6px; text-align: center; }
+.ability-edit .cell .input { height: 32px; margin: 6px 0; }
+.pending { border: 1px solid color-mix(in srgb, var(--accent) 40%, var(--line)); background: var(--accent-soft); border-radius: var(--r); padding: 10px 12px; }
+
+@media (max-width: 1100px) {
+  .vitals { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .vitals .hp { grid-column: 1 / -1; }
+}
+@media (max-width: 860px) {
+  .sheet-body { grid-template-columns: minmax(0, 1fr); }
+  .sheet-head h1 { font-size: 32px; }
+  .ability-edit { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .coins { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .attack { grid-template-columns: 1fr 56px 96px; }
+}
+
+/* ---------- Комната кампании ---------- */
+
+.room { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 18px; align-items: start; }
+.room-side { position: sticky; top: calc(var(--header-h) + 16px); display: flex; flex-direction: column; gap: 14px; max-height: calc(100vh - var(--header-h) - 32px); }
+.log { overflow-y: auto; flex: 1; min-height: 200px; }
+.log-item { padding: 8px 14px; border-bottom: 1px solid var(--line); font-size: 13.5px; display: grid; grid-template-columns: 1fr auto; gap: 8px; }
+.log-item.undone { opacity: 0.45; text-decoration: line-through; }
+.log-item.hidden { background: color-mix(in srgb, var(--surface-2) 60%, transparent); }
+.log-item .when { color: var(--muted); font-size: 11.5px; white-space: nowrap; }
+.log-item.roll .sum { font-weight: 600; }
+
+.party { display: grid; gap: 10px; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); }
+.member {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.member.selected { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.member.turn { border-color: var(--good); }
+.member.npc { background: color-mix(in srgb, var(--surface) 70%, var(--danger-soft)); }
+.member.npc.ally { background: color-mix(in srgb, var(--surface) 70%, var(--good-soft)); }
+.member.npc.hidden-npc { opacity: 0.7; border-style: dashed; }
+.member .top { display: flex; align-items: center; gap: 10px; }
+.member h4 { font-size: 19px; }
+.member .stats { display: flex; gap: 12px; font-size: 13px; color: var(--muted); }
+.member .stats b { color: var(--ink); font-variant-numeric: tabular-nums; }
+.member.down { opacity: 0.6; }
+
+.quick { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.quick .input { width: 64px; height: 28px; }
+
+.initiative { display: flex; flex-direction: column; }
+.init-row { display: grid; grid-template-columns: 36px 1fr auto; gap: 10px; align-items: center; padding: 7px 14px; border-bottom: 1px solid var(--line); font-size: 13.5px; }
+.init-row.on { background: var(--accent-soft); font-weight: 600; }
+.init-row .n { font-family: var(--font-display); font-size: 20px; font-weight: 600; text-align: center; }
+
+.invite { font-family: var(--font-ui); font-weight: 700; letter-spacing: 0.25em; font-size: 20px; }
+
+.statblock { font-size: 13.5px; line-height: 1.55; }
+.statblock h4 { font-size: 18px; margin: 12px 0 4px; border-bottom: 1px solid var(--line); padding-bottom: 2px; }
+.statblock .abil { display: grid; grid-template-columns: repeat(6, 1fr); text-align: center; margin: 8px 0; }
+.statblock .abil b { display: block; font-size: 11px; color: var(--muted); }
+
+@media (max-width: 1000px) {
+  .room { grid-template-columns: minmax(0, 1fr); }
+  .room-side { position: static; max-height: none; }
+  .log { max-height: 360px; }
+}
+.mass-bar { position: sticky; top: calc(var(--header-h) + 8px); z-index: 4; border-color: var(--accent); box-shadow: var(--shadow, 0 6px 20px rgba(0,0,0,.08)); }
+.accent-text { color: var(--accent); }
+.member h4 a { color: inherit; text-decoration: none; }
+.member h4 a:hover { text-decoration: underline; text-underline-offset: 3px; }

@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import type { AppDeps } from '../app.js';
 import { requireUser } from '../auth.js';
-import { memberRole, deleteContent, getContent, listContent, saveContent } from '../repo.js';
+import { memberRole, deleteContent, getContent, getContentBatch, listContent, saveContent } from '../repo.js';
 import { forbidden } from '../errors.js';
 
 const Kind = z.enum(['race', 'class', 'spell', 'item', 'monster', 'feat']);
@@ -13,6 +13,8 @@ const ContentInput = z.object({
   data: z.record(z.string(), z.unknown()),
   visibility: z.enum(['private', 'campaign', 'public']).optional(),
   campaignId: z.string().nullable().optional(),
+  source: z.enum(['custom', 'dnd.su']).optional(),
+  sourceUrl: z.string().max(500).nullable().optional(),
 });
 
 export function contentRoutes(api: FastifyInstance, { db }: AppDeps) {
@@ -29,6 +31,14 @@ export function contentRoutes(api: FastifyInstance, { db }: AppDeps) {
       })
       .parse(req.query);
     return { items: await listContent(db, user.id, q) };
+  });
+
+  /** Несколько записей целиком (заклинания персонажа и т. п.) */
+  api.get('/content/batch', async (req) => {
+    const user = requireUser(req);
+    const { ids } = z.object({ ids: z.string().max(20000) }).parse(req.query);
+    const list = ids.split(',').filter(Boolean).slice(0, 500);
+    return { items: await getContentBatch(db, user.id, list) };
   });
 
   api.get('/content/:id', async (req) => {

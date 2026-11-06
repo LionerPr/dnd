@@ -58,6 +58,11 @@ export async function getContent(db: Db, userId: string, id: string): Promise<Co
   return rows[0];
 }
 
+export async function getContentBatch(db: Db, userId: string, ids: string[]): Promise<ContentRow[]> {
+  if (!ids.length) return [];
+  return db.query<ContentRow>(`SELECT * FROM content c WHERE c.id = ANY($2) AND ${VISIBLE}`, [userId, ids]);
+}
+
 export async function getContentMany(db: Db, ids: string[]): Promise<ContentRow[]> {
   if (!ids.length) return [];
   return db.query<ContentRow>(`SELECT * FROM content WHERE id = ANY($1)`, [ids]);

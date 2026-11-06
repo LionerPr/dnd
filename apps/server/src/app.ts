@@ -56,9 +56,10 @@ export async function buildApp(db: Db, opts: { secureCookies?: boolean; webDist?
 
   const dist = opts.webDist ?? resolve(import.meta.dirname, '../../web/dist');
   if (existsSync(dist)) {
-    await app.register(fastifyStatic, { root: dist, wildcard: false });
+    // wildcard: true — файлы ищутся на диске при каждом запросе, поэтому пересборка фронтенда не требует перезапуска
+    await app.register(fastifyStatic, { root: dist, wildcard: true });
     app.setNotFoundHandler((req, reply) => {
-      if (req.url.startsWith('/api') || req.method !== 'GET') return reply.status(404).send({ error: 'Не найдено' });
+      if (req.url.startsWith('/api') || req.url.startsWith('/assets/') || req.method !== 'GET') return reply.status(404).send({ error: 'Не найдено' });
       return reply.sendFile('index.html');
     });
   }
