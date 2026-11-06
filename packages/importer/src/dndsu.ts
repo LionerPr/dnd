@@ -56,21 +56,6 @@ function cardTitle($: $) {
  * Самодельные (homebrew) страницы размечены проще: <p><strong><em>Название.</em></strong> текст</p>.
  * Абзацы внутри скрытых блоков (.hide-wrapper) — это разновидности, их разбираем отдельно.
  */
-function looseFeatures($: $, root: cheerio.Cheerio<AnyNode>, prefix: string, inside = false): Feature[] {
-  const out: Feature[] = [];
-  root.find('p').each((_, p) => {
-    const $p = $(p);
-    if (!inside && $p.closest('.hide-wrapper').length) return;
-    const head = $p.children('strong, b').first();
-    if (!head.length || !$p.text().trim().startsWith(head.text().trim().slice(0, 3))) return;
-    const name = text(head.text()).replace(/[.:]\s*$/, '');
-    if (!name || name.length > 60) return;
-    const body = text($p.text()).slice(text(head.text()).length).trim();
-    const id = `${prefix}.${out.length}`;
-    out.push({ id, name, description: body, effects: effectsFromFeature(name, body, id, $p, $) });
-  });
-  return out;
-}
 
 /** Разновидности на самодельных страницах: заголовок h2.bigSectionTitle и скрытый блок за ним. */
 function looseSubraces($: $, slug: string): Subrace[] | undefined {
@@ -124,30 +109,57 @@ function blockText($: $, nodes: cheerio.Cheerio<AnyNode>): string {
 
 // ---------- Эффекты из текста особенностей ----------
 
+const COUNT_WORDS: Record<string, number> = { одн: 1, дв: 2, тр: 3, четыр: 4 };
+const countOf = (w: string) => Object.entries(COUNT_WORDS).find(([k]) => w.toLowerCase().startsWith(k))?.[1];
+
+/**
+ * «Увеличение характеристик» в любых формулировках dnd.su:
+ * «Значение вашего Интеллекта увеличивается на 2 и значение Телосложения — на 1», «Ваше значение Телосложения увеличено на 2, а Интеллекта на 1»,
+ * «Значения ваших Силы, Ловкости и Телосложения увеличиваются на 1», «Значение всех ваших характеристик увеличивается на 1»,
+ * «Увеличьте две характеристики по вашему выбору на 1», «одной характеристики по выбору на 2, а другой — на 1».
+ */
+function asiEffects(body: string, featureId: string): Effect[] {
+  // «Либо +2 и +1, либо трём по +1» — лист не умеет «либо», берём первый вариант
+  const first = (body.split(/(?<=\.)\s+(?=[А-ЯЁ])/)[0] ?? body).split(/,\s*либо\s+/i)[0]!.replace(/^либо\s+/i, '');
+  if (/всех\s+ваших\s+характеристик|все\s+ваши\s+характеристики/i.test(first)) {
+    const v = Number(first.match(/на\s+(\d)/)?.[1] ?? 1);
+    return (['str', 'dex', 'con', 'int', 'wis', 'cha'] as Ability[]).map((a) => ({ type: 'ability_bonus', ability: a, value: v }));
+  }
+  const out: Effect[] = [];
+  // Делим на части: «…на 2, а значение Интеллекта на 1», «…на 2 и значение … на 1», «Либо …, либо …»
+  // (\b в JS не работает с кириллицей, поэтому границы слов не используем)
+  const parts = first.split(/,?\s+(?:а|и)\s+(?=значени|ваше|вашей|вашего|друг)|,\s+а\s+|;\s*/i);
+  let carry: number | undefined;
+  for (const raw of parts.reverse()) {
+    const part = raw.trim();
+    const num = Number(part.match(/на\s+(\d)/)?.[1] ?? carry ?? 0);
+    carry = num || carry;
+    if (!num) continue;
+    const pick = part.match(/(одн|дв|тр|четыр)\S*\s+(?:(?:различн|разн|друг)\S*\s+)?(?:ваш\S*\s+)?характеристик/i);
+    if (pick || /по\s+(?:вашему\s+)?выбору|друг(?:ой|ую|ая)[\s,.—-]/i.test(part)) {
+      out.push({ type: 'ability_choice', id: '', pick: pick ? countOf(pick[1]!) ?? 1 : 1, value: num });
+      continue;
+    }
+    const abilities = [...new Set(part.split(/[^А-ЯЁа-яё]+/).map((w) => abilityFromWord(w)).filter((a): a is Ability => !!a))];
+    for (const a of abilities) out.push({ type: 'ability_bonus', ability: a, value: num });
+  }
+  out.reverse();
+  // id выбора — как в прежних версиях разбора, чтобы уже сделанный в листах выбор не сбрасывался при повторном импорте
+  const hasPlus2 = out.some((e) => e.type === 'ability_choice' && e.value === 2 && e.pick === 1);
+  for (const e of out) {
+    if (e.type !== 'ability_choice') continue;
+    e.id = `${featureId}.${e.value === 2 && e.pick === 1 ? 'plus2' : hasPlus2 && e.pick === 1 ? 'plus1' : 'choice'}`;
+  }
+  return out;
+}
+
 export function effectsFromFeature(name: string, body: string, featureId: string, $html?: cheerio.Cheerio<AnyNode>, $?: $): Effect[] {
   const n = name.toLowerCase();
   const effects: Effect[] = [];
-  if (n.startsWith('увеличение характеристик') || n.startsWith('повышение характеристик')) {
-    for (const m of body.matchAll(/значение\s+(?:вашего|вашей|вашего\s+показателя)?\s*([А-ЯЁа-яё]+)\s+увеличивается\s+на\s+(\d)/gi)) {
-      const a = abilityFromWord(m[1]!);
-      if (a) effects.push({ type: 'ability_bonus', ability: a, value: Number(m[2]) });
-    }
-    if (/все\s+ваши\s+характеристики\s+увеличиваются\s+на\s+1/i.test(body)) {
-      for (const a of ['str', 'dex', 'con', 'int', 'wis', 'cha'] as Ability[]) effects.push({ type: 'ability_bonus', ability: a, value: 1 });
-    }
-    const choiceTwo = body.match(/(?:увеличьте|увеличиваются)[^.]*?на\s+2[^.]*?на\s+1/i);
-    if (!effects.length && choiceTwo) {
-      effects.push({ type: 'ability_choice', id: `${featureId}.plus2`, pick: 1, value: 2 });
-      effects.push({ type: 'ability_choice', id: `${featureId}.plus1`, pick: 1, value: 1 });
-    }
-    const other = body.match(/(\S+)\s+(?:другие|других|других\s+характеристик)[^.]*?на\s+1/i);
-    if (other && !effects.some((e) => e.type !== 'ability_bonus')) {
-      const count = NUMBER_WORDS[other[1]!.toLowerCase()] ?? 1;
-      effects.push({ type: 'ability_choice', id: `${featureId}.choice`, pick: count, value: 1 });
-    }
-  }
+  if (/^(увеличение|повышение) характеристик/.test(n)) effects.push(...asiEffects(body, featureId));
   if (n === 'скорость' || /скорость ходьбы/i.test(body)) {
-    const walk = body.match(/скорость\s+ходьбы\s+(?:составляет|равна)\s+(\d+)\s+фут/i);
+    // «скорость ходьбы составляет 30 футов», «— 30 футов», «скорость перемещения равна 40 футам», «30 фт.»
+    const walk = body.match(/скорость\s+(?:ходьбы|перемещения|передвижения)?\s*(?:составляет|равна|—|-|:)?\s*(\d+)\s*(?:фут|фт)/i);
     if (walk) effects.push({ type: 'speed', walk: Number(walk[1]) });
   }
   for (const [kind, re] of [
@@ -159,7 +171,7 @@ export function effectsFromFeature(name: string, body: string, featureId: string
     if (m) effects.push({ type: 'speed', [kind]: Number(m[1]) });
   }
   if (n.includes('тёмное зрение') || n.includes('темное зрение')) {
-    const m = body.match(/(\d+)\s+фут/);
+    const m = body.match(/(\d+)\s*(?:фут|фт)/);
     if (m) effects.push({ type: 'darkvision', range: Number(m[1]) });
   }
   const resist = body.match(/сопротивление\s+(?:к\s+)?урону\s+([^.,;]+)/i);
@@ -199,14 +211,38 @@ function sizeFrom(body: string): Race['size'] {
 }
 
 function featuresFromParagraphs($: $, root: cheerio.Cheerio<AnyNode>, prefix: string): Feature[] {
+  return looseFeatures($, root, prefix);
+}
+
+/** Справочные строки, а не особенности: списки имён, источник, сведения о доме метки, таблицы роста и веса */
+const LORE = /имена|^прозвища|^фамилии|^источник|^разновидност|^подрас[аы]?$|^лидер$|^штаб-квартира$|^резиденция$|^высота$|^вес в фунтах$|^модификатор размера$/i;
+
+const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/**
+ * Особенности расы — абзацы, начинающиеся с выделенного названия. На dnd.su встречается разная разметка:
+ * p.article-body__feature (официальные), <strong><em>Название.</em></strong>, <em><strong>…</strong></em>,
+ * обёртка в <span> (книги 2022 года и самодельное). Абзацы в скрытых блоках (.hide-wrapper) — разновидности, их разбираем отдельно.
+ */
+function looseFeatures($: $, root: cheerio.Cheerio<AnyNode>, prefix: string, inside = false): Feature[] {
   const out: Feature[] = [];
-  const marked = root.find('p.article-body__feature');
-  if (!marked.length) return looseFeatures($, root, prefix);
-  marked.each((i, p) => {
+  root.find('p').each((_, p) => {
     const $p = $(p);
-    const name = text($p.find('.article-body__feature-name').first().text());
-    const body = text($p.text()).replace(new RegExp(`^${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*\\.?\\s*`), '');
-    const id = `${prefix}.${i}`;
+    if (!inside && $p.closest('.hide-wrapper').length) return;
+    const full = text($p.text());
+    let name: string;
+    if ($p.hasClass('article-body__feature')) {
+      name = text($p.find('.article-body__feature-name').first().text());
+    } else {
+      const head = $p.find('strong, b, .dnd-feature-name').first();
+      const headText = text(head.text());
+      if (!head.length || !headText || !full.startsWith(headText.slice(0, Math.min(4, headText.length)))) return;
+      name = headText;
+    }
+    name = name.replace(/[\s.:]+$/, '');
+    if (!name || name.length > 60 || !/[А-ЯЁа-яёA-Za-z]/.test(name) || LORE.test(name)) return;
+    const body = full.replace(new RegExp(`^${escapeRe(name)}\\s*[.:]?\\s*`), '');
+    const id = `${prefix}.${out.length}`;
     out.push({ id, name, description: body, effects: effectsFromFeature(name, body, id, $p, $) });
   });
   return out;
@@ -233,6 +269,22 @@ export function parseRace(html: string, url: string): Race {
   } else {
     features = featuresFromParagraphs($, article, slug);
     if (!article.find('p.article-body__feature').length) subraces = looseSubraces($, slug);
+  }
+  // Расы из книг 2022+ (Dragonlance, UA) не дают бонусов сами: по общему правилу +2 и +1 к характеристикам на выбор
+  const hasAsi = [...features, ...(subraces ?? []).flatMap((s) => s.features)].some((f) =>
+    (f.effects ?? []).some((e) => e.type === 'ability_bonus' || e.type === 'ability_choice'),
+  );
+  if (!hasAsi) {
+    const id = `${slug}.asi`;
+    features.unshift({
+      id,
+      name: 'Увеличение характеристик',
+      description: 'Описание расы не даёт бонусов к характеристикам. По общему правилу увеличьте одну характеристику на 2, а другую — на 1.',
+      effects: [
+        { type: 'ability_choice', id: `${id}.plus2`, pick: 1, value: 2 },
+        { type: 'ability_choice', id: `${id}.plus1`, pick: 1, value: 1 },
+      ],
+    });
   }
   const all = [...features, ...(subraces?.[0]?.features ?? [])];
   const sizeFeature = all.find((f) => f.name.toLowerCase() === 'размер');

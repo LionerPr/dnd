@@ -240,6 +240,13 @@ describe('игра целиком', () => {
     expect(r.body.characters.some((c: { id: string; data: { name: string } }) => c.id === r.body.characterId && c.data.name === 'Брэн')).toBe(true);
   });
 
+  it('повторный импорт той же статьи по новому адресу не создаёт дубль', async () => {
+    const a = await as(dm.cookie, 'POST', '/api/import/library', { kind: 'race', url: 'https://dnd.su/race/213-astral_elf/', data: { name: 'Астральный эльф', features: [] } });
+    const b = await as(dm.cookie, 'POST', '/api/import/library', { kind: 'race', url: 'https://dnd.su/multiverse/race/213-astral-elf/', data: { name: 'Астральный эльф', features: [] } });
+    expect(b.body.id).toBe(a.body.id);
+    expect((await as(dm.cookie, 'GET', `/api/content/${a.body.id}`)).body.item.source_url).toBe('https://dnd.su/multiverse/race/213-astral-elf/');
+  });
+
   it('поиск по-русски без учёта регистра', async () => {
     const list = await as(player.cookie, 'GET', `/api/content?q=${encodeURIComponent('горный')}`);
     expect(list.body.items.map((i: { name: string }) => i.name)).toContain('Горный дварф');

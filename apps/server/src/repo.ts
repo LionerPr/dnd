@@ -102,10 +102,28 @@ export async function saveContent(
 
 /** Импорт в общую библиотеку: обновляет запись с тем же адресом источника. */
 export async function upsertLibraryContent(db: Db, kind: ContentKind, name: string, sourceUrl: string, data: Record<string, unknown>, source = 'dnd.su') {
-  const existing = await db.query<{ id: string }>(`SELECT id FROM content WHERE source_url = $1 AND owner_id IS NULL`, [sourceUrl]);
+  let existing = await db.query<{ id: string }>(`SELECT id FROM content WHERE source_url = $1 AND owner_id IS NULL`, [sourceUrl]);
+  // Одна и та же статья dnd.su бывает по разным адресам (/race/213-astral_elf/ → /multiverse/race/213-astral-elf/):
+  // номер статьи на сайте общий для всех разделов, поэтому ищем ещё и по нему
+  const article = sourceUrl.match(/\/(race|class|spells)\/(\d+)-/);
+  if (article) {
+    existing = await db.query<{ id: string }>(
+      `SELECT id FROM content WHERE owner_id IS NULL AND kind = $1 AND (source_url LIKE $2 OR source_url = $3)
+       ORDER BY source_url = $3 DESC, updated_at`,
+      [kind, `%/${article[1]}/${article[2]}-%`, sourceUrl],
+    );
+  }
   if (existing[0]) {
     const id = existing[0].id;
-    await db.query(`UPDATE content SET name = $2, data = $3, name_lc = $4, updated_at = now() WHERE id = $1`, [id, name, { ...data, id, name, kind, source, sourceUrl }, searchKey(name)]);
+    // Дубли той же статьи от прежних импортов — убрать, если ни один лист на них не ссылается
+    if (article && existing.length > 1) {
+      await db.query(
+        `DELETE FROM content WHERE id IN (SELECT value FROM json_each($1))
+           AND NOT EXISTS (SELECT 1 FROM characters ch WHERE instr(ch.data, content.id) > 0)`,
+        [existing.slice(1).map((r) => r.id)],
+      );
+    }
+    await db.query(`UPDATE content SET name = $2, data = $3, name_lc = $4, source_url = $5, updated_at = now() WHERE id = $1`, [id, name, { ...data, id, name, kind, source, sourceUrl }, searchKey(name), sourceUrl]);
     return id;
   }
   const id = `${kind}-${nanoid(10)}`;

@@ -80,6 +80,26 @@ describe('самодельные страницы (homebrew)', () => {
     expect(c.subclasses.map((s) => s.name)).toContain('Орден призрачных убийц');
   });
 
+  it.skipIf(!existsSync(fx('281-bugbear.html')))('раса 2022 года: разметка в span, бонус на выбор', () => {
+    const r = parseRace(readFileSync(fx('281-bugbear.html'), 'utf8'), 'https://dnd.su/multiverse/race/281-bugbear/');
+    expect(r.features.map((f) => f.name)).toEqual(expect.arrayContaining(['Увеличение характеристик', 'Тёмное зрение', 'Длинные конечности', 'Скрытность', 'Внезапное нападение']));
+    expect(r.features[0]!.effects).toEqual([
+      { type: 'ability_choice', id: expect.stringMatching(/plus2$/), pick: 1, value: 2 },
+      { type: 'ability_choice', id: expect.stringMatching(/plus1$/), pick: 1, value: 1 },
+    ]);
+    expect(r.speed).toBe(30);
+  });
+
+  it.skipIf(!existsSync(fx('83-gnome.html')))('разновидности с разметкой dnd-feature-name, без списков имён', () => {
+    const r = parseRace(readFileSync(fx('83-gnome.html'), 'utf8'), 'https://dnd.su/race/83-gnome/');
+    const forest = r.subraces!.find((s) => s.name === 'Лесной')!;
+    expect(forest.features.find((f) => f.name === 'Увеличение характеристик')?.effects).toEqual([
+      { type: 'ability_bonus', ability: 'int', value: 2 },
+      { type: 'ability_bonus', ability: 'dex', value: 1 },
+    ]);
+    expect(r.subraces!.flatMap((s) => s.features).some((f) => /имена|^источник/i.test(f.name))).toBe(false);
+  });
+
   it('раздел определяется и для homebrew/multiverse', () => {
     expect(detectKind('https://dnd.su/homebrew/race/545-oniborne/')).toBe('race');
     expect(detectKind('https://dnd.su/multiverse/race/193-reborn/')).toBe('race');

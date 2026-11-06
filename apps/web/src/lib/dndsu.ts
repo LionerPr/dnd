@@ -65,17 +65,19 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /** Обойти карту сайта и сложить разделы в общую библиотеку. Пока идёт загрузка, вкладку надо держать открытой. */
 /**
- * Самодельные (homebrew) и «мультивселенная»: в карте сайта их нет целиком,
- * поэтому берём ссылки со страниц-списков /race/ и /class/.
+ * Расы и классы берём со страниц-списков /race/ и /class/: там у каждой статьи её настоящий адрес,
+ * включая «мультивселенную» (часть её в карте сайта отсутствует). Самодельное (homebrew) — отдельной кнопкой.
+ * Заклинания — по карте сайта.
  */
-async function extraUrls(kinds: ImportKind[]) {
+async function indexUrls(kinds: ImportKind[], homebrew: boolean) {
   const out: { kind: ImportKind; url: string }[] = [];
-  for (const kind of kinds) {
-    if (kind === 'spell') continue;
+  for (const kind of IMPORT_ORDER.filter((k) => kinds.includes(k) && k !== 'spell')) {
     const html = await fetchText(`/import/page?url=${encodeURIComponent(`https://dnd.su/${kind}/`)}`);
+    const prefix = homebrew ? '/homebrew' : '(?:/multiverse)?';
     const seen = new Set<string>();
-    for (const m of html.matchAll(new RegExp(`href="(/(?:homebrew|multiverse)/${kind}/\\d+-[^"/]+/)"`, 'g'))) {
-      if (seen.has(m[1]!)) continue;
+    for (const m of html.matchAll(new RegExp(`href="(${prefix}/${kind}/\\d+-[^"/]+/)"`, 'g'))) {
+      // Напарники (sidekick) из «Основных правил» — не классы для игроков
+      if (seen.has(m[1]!) || /sidekick/.test(m[1]!)) continue;
       seen.add(m[1]!);
       out.push({ kind, url: `https://dnd.su${m[1]}` });
     }
@@ -83,10 +85,13 @@ async function extraUrls(kinds: ImportKind[]) {
   return out;
 }
 
+const IMPORT_ORDER: ImportKind[] = ['race', 'class', 'spell'];
+
 export async function startCatalog(kinds: ImportKind[], onDone?: () => void, homebrew = false) {
   if (job?.status === 'running') return;
   const m = await importer();
-  const items = homebrew ? await extraUrls(kinds) : m.catalogUrls(await fetchText('/import/sitemap'), kinds);
+  const items = await indexUrls(kinds, homebrew);
+  if (!homebrew && kinds.includes('spell')) items.push(...m.catalogUrls(await fetchText('/import/sitemap'), ['spell']));
   job = { kinds, total: items.length, done: 0, failed: [], status: 'running' };
   notify();
   for (const { url } of items) {
