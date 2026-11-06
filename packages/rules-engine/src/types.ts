@@ -220,8 +220,15 @@ export interface Monster extends ContentMeta {
   xp?: number;
   traits: MonsterAction[];
   actions: MonsterAction[];
+  bonusActions?: MonsterAction[];
   reactions?: MonsterAction[];
   legendary?: MonsterAction[];
+  /** Вступление к легендарным действиям: сколько их за раунд */
+  legendaryIntro?: string;
+  /** Логово, действия логова, региональные эффекты и описание — как текст */
+  description?: string;
+  /** Местность обитания */
+  habitat?: string;
 }
 
 export type Content = Race | CharacterClass | Spell | Item | Monster;

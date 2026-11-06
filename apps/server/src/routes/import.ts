@@ -68,7 +68,7 @@ export function importRoutes(api: Api, { db }: AppDeps) {
     const user = requireUser(req);
     if (!canAuthor(user)) throw forbidden('Общую библиотеку пополняют администратор и модераторы');
     const body = z
-      .object({ kind: z.enum(['race', 'class', 'spell', 'item']), url: z.string().max(500), data: z.record(z.string(), z.unknown()) })
+      .object({ kind: z.enum(['race', 'class', 'spell', 'item', 'monster']), url: z.string().max(500), data: z.record(z.string(), z.unknown()) })
       .parse(req.body);
     let url: string;
     try {

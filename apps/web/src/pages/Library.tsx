@@ -1,3 +1,4 @@
+import { Statblock } from '../components/Statblock';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Download, FileUp, Plus, Search, Square } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
@@ -331,6 +332,11 @@ function ImportModal({ onClose }: { onClose: () => void }) {
               {d.subraces?.length > 0 && <div className="small muted">Разновидности: {d.subraces.map((s: { name: string }) => s.name).join(', ')}</div>}
             </>
           )}
+          {preview.kind === 'monster' && (
+            <div className="panel panel-pad">
+              <Statblock m={d} />
+            </div>
+          )}
           {preview.kind === 'spell' && (
             <div className="panel panel-pad">
               <SpellCard spell={d} />
@@ -376,8 +382,8 @@ function CatalogPanel() {
   const j = useCatalogJob();
   const running = j?.status === 'running';
   const start = useMutation({
-    mutationFn: ({ kinds, homebrew }: { kinds: ImportKind[]; homebrew?: boolean }) =>
-      startCatalog(kinds, () => qc.invalidateQueries({ queryKey: ['content'] }), homebrew),
+    mutationFn: ({ kinds, homebrew, mmOnly }: { kinds: ImportKind[]; homebrew?: boolean; mmOnly?: boolean }) =>
+      startCatalog(kinds, () => qc.invalidateQueries({ queryKey: ['content'] }), homebrew, mmOnly),
     onError: (e: Error) => toast(e.message, 'error'),
   });
   const stop = { mutate: stopCatalog };
@@ -431,6 +437,12 @@ function CatalogPanel() {
               </button>
               <button className="btn" disabled={start.isPending} onClick={() => start.mutate({ kinds: ['item'] })}>
                 Все магические предметы
+              </button>
+              <button className="btn" disabled={start.isPending} title="Около 460 страниц, примерно 12 минут" onClick={() => start.mutate({ kinds: ['monster'], mmOnly: true })}>
+                Бестиарий: Monster Manual
+              </button>
+              <button className="btn" disabled={start.isPending} title="Все книги: около 2700 страниц, больше часа" onClick={() => start.mutate({ kinds: ['monster'] })}>
+                Весь бестиарий
               </button>
               <button className="btn primary" disabled={start.isPending} onClick={() => start.mutate({ kinds: ['race', 'class', 'spell', 'item'] })}>
                 Всё сразу

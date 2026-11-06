@@ -1,4 +1,4 @@
-import type { Ability, CharacterClass, ClassLevel, Coin, Effect, Feature, FeaturePart, Item, LevelCount, Race, Skill, Spellcasting, Subclass, Subrace } from '@dnd/rules-engine';
+import type { Ability, CharacterClass, ClassLevel, Coin, Condition, DamageType, Effect, Feature, FeaturePart, Item, LevelCount, Monster, MonsterAction, Race, Skill, Spellcasting, Subclass, Subrace } from '@dnd/rules-engine';
 import { LANGUAGES, SKILLS } from '@dnd/rules-engine';
 import * as cheerio from 'cheerio/slim';
 import type { AnyNode } from 'domhandler';
@@ -980,5 +980,221 @@ export function parseItem(html: string, url: string): Item {
     attunement: /настройк/i.test(typeLine) || undefined,
     cost: parseCost(text($('.price').first().text())),
     ...(effects.length ? { effects } : {}),
+  };
+}
+
+// ---------- Бестиарий ----------
+
+const SIZE_WORDS: [RegExp, string][] = [
+  [/^крошечн/i, 'Крошечный'],
+  [/^маленьк/i, 'Маленький'],
+  [/^средн/i, 'Средний'],
+  [/^больш/i, 'Большой'],
+  [/^огромн/i, 'Огромный'],
+  [/^громадн/i, 'Громадный'],
+];
+
+const CONDITION_WORDS: [RegExp, Condition][] = [
+  [/ослепл/i, 'blinded'],
+  [/очарова/i, 'charmed'],
+  [/оглох|оглуш/i, 'deafened'],
+  [/испуг/i, 'frightened'],
+  [/схвач|захвач/i, 'grappled'],
+  [/недееспособ/i, 'incapacitated'],
+  [/невидим/i, 'invisible'],
+  [/парализ/i, 'paralyzed'],
+  [/окамен/i, 'petrified'],
+  [/отравл/i, 'poisoned'],
+  [/сбит|ничком/i, 'prone'],
+  [/опутан|обездвиж/i, 'restrained'],
+  [/ошеломл/i, 'stunned'],
+  [/бессознат/i, 'unconscious'],
+];
+
+const ABBR: Record<string, Ability> = { сил: 'str', лов: 'dex', тел: 'con', инт: 'int', мдр: 'wis', муд: 'wis', хар: 'cha' };
+
+function damageList(s: string): DamageType[] {
+  const out: DamageType[] = [];
+  for (const [re, t] of DAMAGE_WORDS) if (re.test(s)) out.push(t as DamageType);
+  return out;
+}
+
+function monsterAction($: $, p: AnyNode): MonsterAction | null {
+  const $p = $(p);
+  const full = text($p.text());
+  if (!full) return null;
+  // Название — в начальном <strong>/<em> до точки: «Укус.», «Атака крыльями (стоит 2 действия).»
+  const head = text($p.find('strong').first().text()).replace(/\.$/, '');
+  let name = head;
+  let description = full;
+  if (head && full.startsWith(head)) description = full.slice(head.length).replace(/^\s*\.\s*/, '').trim();
+  else {
+    const m = full.match(/^([^.]{1,80})\.\s+(.*)$/);
+    if (!m) return { name: '', description: full };
+    name = m[1]!;
+    description = m[2]!;
+  }
+  const action: MonsterAction = { name: title(name), description };
+  const atk = description.match(/([+−-]\s?\d+)\s*к попаданию/);
+  if (atk) action.attackBonus = Number(atk[1]!.replace(/[−\s]/g, (c) => (c === '−' ? '-' : '')));
+  const hit = description.split(/Попадание\s*:/)[1] ?? (atk ? '' : description);
+  const dmg = hit.match(/\((\d+к\d+(?:\s*[+−-]\s*\d+)?)\)/);
+  if (dmg && (atk || /урон/.test(hit))) {
+    action.damage = dmg[1]!.replace(/\s+/g, '').replace('−', '-');
+    // Тип урона — слово рядом с первыми костями
+    const at = hit.indexOf(dmg[0]);
+    let best: { t: string; d: number } | null = null;
+    for (const [re, t] of DAMAGE_WORDS) {
+      for (const m of hit.matchAll(new RegExp(re.source, 'gi'))) {
+        const pos = m.index!;
+        // «Колющий урон 19 (2к10 + 8)» — тип перед костями; «5 (1к6 + 2) рубящего урона» — после
+        const d = pos < at ? (at - pos <= 22 ? at - pos - 100 : 999) : pos - (at + dmg[0].length);
+        if (d <= 30 && (!best || d < best.d)) best = { t, d };
+      }
+    }
+    if (best) action.damageType = best.t as DamageType;
+  }
+  return action;
+}
+
+export function parseMonster(html: string, url: string): Monster & { source: 'dnd.su'; sourceUrl: string; nameEn?: string; book?: string } {
+  const $ = cheerio.load(html);
+  const { name, en } = cardTitle($);
+  const book = $('h2.card-title .source-plaque').first().attr('title') || pageBook($);
+  const body = $('.card__body ul.params').first();
+  if (!body.length) throw new Error('На странице нет статблока существа');
+  const field = (label: string) => {
+    const li = body.children('li').filter((_, el) => text($(el).children('strong').first().text()).toLowerCase().startsWith(label.toLowerCase())).first();
+    if (!li.length) return '';
+    const c = li.clone();
+    c.children('strong').first().remove();
+    c.find('sup').remove();
+    return text(c.text());
+  };
+
+  const sta = text(body.children('li.size-type-alignment').first().clone().find('sup').remove().end().text());
+  const [first = '', ...rest] = sta.split(/\s+/);
+  const size = SIZE_WORDS.find(([re]) => re.test(first))?.[1] ?? first;
+  const afterSize = rest.join(' ');
+  const comma = afterSize.lastIndexOf(',');
+  const type = (comma >= 0 ? afterSize.slice(0, comma) : afterSize).trim();
+  const alignment = comma >= 0 ? afterSize.slice(comma + 1).trim() : undefined;
+
+  const acRaw = field('Класс Доспеха');
+  const acM = acRaw.match(/(\d+)\s*(?:\((.+?)\))?/);
+  const hpLi = body.children('li').filter((_, el) => /^Хиты/.test(text($(el).children('strong').first().text()))).first();
+  const hp = Number(hpLi.find('[data-type="middle"]').text()) || Number(field('Хиты').match(/\d+/)?.[0] ?? 1);
+  const throwN = hpLi.find('[data-type="throw"]').text();
+  const die = hpLi.find('[data-type="dice"]').text();
+  const op = hpLi.find('[data-type="action"]').text().replace('−', '-');
+  const bonus = hpLi.find('[data-type="bonus"]').text();
+  const hpFormula = throwN && die ? `${throwN}к${die}${op && bonus ? `${op}${bonus}` : ''}` : undefined;
+
+  const abilities = { str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 10 } as Record<Ability, number>;
+  body.find('li.abilities .stat').each((_, el) => {
+    const a = abilityFromWord($(el).attr('title') ?? '');
+    const v = Number($(el).children('div').eq(1).text().match(/\d+/)?.[0]);
+    if (a && v) abilities[a] = v;
+  });
+
+  const saves: Partial<Record<Ability, number>> = {};
+  for (const m of field('Спасброски').matchAll(/([А-Яа-яЁё]{3})[а-яё]*\s*([+−-]\d+)/g)) {
+    const a = ABBR[m[1]!.toLowerCase()];
+    if (a) saves[a] = Number(m[2]!.replace('−', '-'));
+  }
+  const skillByName = new Map(Object.entries(SKILLS).map(([k, v]) => [v.name.toLowerCase().replace(/ё/g, 'е'), k as Skill]));
+  const skills: Partial<Record<Skill, number>> = {};
+  body.find('li.skills .skill-bonus').each((_, el) => {
+    const v = Number(text($(el).find('.skill-bonus-value').text()).replace('−', '-'));
+    const n = text($(el).clone().find('.skill-bonus-value').remove().end().text()).toLowerCase().replace(/ё/g, 'е');
+    const k = skillByName.get(n);
+    if (k && !Number.isNaN(v)) skills[k] = v;
+  });
+
+  const conds = field('Иммунитет к состоянию') || field('Иммунитет к состояниям');
+  const crRaw = field('Опасность');
+  const crM = crRaw.match(/^([\d/]+)\s*(?:\(([\d\s ]+)\s*опыта\))?/);
+
+  const sections: Record<string, AnyNode[]> = {};
+  const extra: string[] = [];
+  let legendaryIntro: string | undefined;
+  body.children('li.subsection').each((_, li) => {
+    const div = $(li).children('div').first();
+    // Опциональные правила и врезки из других книг — в описание, не в особенности
+    if (div.hasClass('additionalInfo')) {
+      const h = text(div.find('h3').first().text());
+      const t = blockText($, div.contents().filter((_, el) => !$(el).is('h3')));
+      if (t) extra.push(h ? `${h}\n${t}` : t);
+      return;
+    }
+    const head = text($(li).children('h3').first().text()) || 'Особенности';
+    const ps = div.children('p').toArray();
+    if (/^(Описание|Логово|Действия логова|Региональные эффекты|Местные эффекты)/i.test(head) || !ps.length) {
+      const t = blockText($, div.contents());
+      if (t) extra.push(head === 'Описание' ? t : `${head}\n${t}`);
+      return;
+    }
+    (sections[head] ??= []).push(...ps);
+  });
+  const actions = (head: RegExp) => {
+    const out: MonsterAction[] = [];
+    for (const [h, ps] of Object.entries(sections)) {
+      if (!head.test(h)) continue;
+      for (const p of ps) {
+        const a = monsterAction($, p);
+        if (!a) continue;
+        if (!a.name) {
+          if (/легендарн/i.test(h)) legendaryIntro = a.description;
+          else if (out.length) out[out.length - 1]!.description += `\n${a.description}`;
+          continue;
+        }
+        out.push(a);
+      }
+    }
+    return out;
+  };
+  const traits = actions(/^Особенности$/);
+  const acts = actions(/^Действия$/);
+  const bonusActions = actions(/^Бонусные действия/i);
+  const reactions = actions(/^Реакци/i);
+  const legendary = actions(/^Легендарные действия/i);
+  const mythic = actions(/^Мифические действия/i);
+
+  const opt = <T,>(xs: T[]) => (xs.length ? xs : undefined);
+  return {
+    kind: 'monster',
+    id: `dndsu-monster-${slugOf(url)}`,
+    name,
+    nameEn: en,
+    source: 'dnd.su',
+    sourceUrl: url,
+    book,
+    size,
+    type,
+    alignment,
+    ac: Number(acM?.[1] ?? 10),
+    acNote: acM?.[2],
+    hp,
+    hpFormula,
+    speed: field('Скорость'),
+    abilities,
+    saves: Object.keys(saves).length ? saves : undefined,
+    skills: Object.keys(skills).length ? skills : undefined,
+    vulnerabilities: opt(damageList(field('Уязвимость к урону'))),
+    resistances: opt(damageList(field('Сопротивление к урону') || field('Сопротивление урону'))),
+    immunities: opt(damageList(field('Иммунитет к урону'))),
+    conditionImmunities: opt(CONDITION_WORDS.filter(([re]) => re.test(conds)).map(([, c]) => c)),
+    senses: field('Чувства') || undefined,
+    languages: field('Языки') || undefined,
+    cr: crM?.[1] ?? '0',
+    xp: crM?.[2] ? Number(crM[2].replace(/\D/g, '')) : undefined,
+    habitat: field('Местность обитания') || undefined,
+    traits,
+    actions: acts,
+    bonusActions: opt(bonusActions),
+    reactions: opt(reactions),
+    legendary: opt([...legendary, ...mythic]),
+    legendaryIntro,
+    description: extra.join('\n\n') || undefined,
   };
 }

@@ -6,7 +6,7 @@
 import { useSyncExternalStore } from 'react';
 import { api, ApiError } from '../api/client';
 
-export type ImportKind = 'race' | 'class' | 'spell' | 'item';
+export type ImportKind = 'race' | 'class' | 'spell' | 'item' | 'monster';
 export interface Parsed {
   url: string;
   kind: ImportKind;
@@ -29,12 +29,11 @@ export async function parsePage(rawUrl: string, html?: string): Promise<Parsed> 
   const m = await importer();
   const url = m.assertDndSuUrl(rawUrl).toString();
   const kind = m.detectKind(url);
-  if (kind !== 'race' && kind !== 'class' && kind !== 'spell' && kind !== 'item') {
-    throw new Error(kind ? 'Импорт этого раздела ещё не готов — пока расы, классы, заклинания и предметы' : 'Это не страница расы, класса, заклинания или предмета');
-  }
+  if (!kind) throw new Error('Это не страница расы, класса, заклинания, предмета или существа');
   const page = html ?? (await fetchText(`/import/page?url=${encodeURIComponent(url)}`));
   try {
-    const data = kind === 'race' ? m.parseRace(page, url) : kind === 'class' ? m.parseClass(page, url) : kind === 'item' ? m.parseItem(page, url) : m.parseSpell(page, url);
+    const data =
+      kind === 'race' ? m.parseRace(page, url) : kind === 'class' ? m.parseClass(page, url) : kind === 'item' ? m.parseItem(page, url) : kind === 'monster' ? m.parseMonster(page, url) : m.parseSpell(page, url);
     return { url, kind, data };
   } catch (e) {
     throw new Error(`Не получилось разобрать страницу: ${(e as Error).message}`);
@@ -85,14 +84,14 @@ async function indexUrls(kinds: ImportKind[], homebrew: boolean) {
   return out;
 }
 
-const IMPORT_ORDER: ImportKind[] = ['race', 'class', 'spell', 'item'];
+const IMPORT_ORDER: ImportKind[] = ['race', 'class', 'spell', 'item', 'monster'];
 
-export async function startCatalog(kinds: ImportKind[], onDone?: () => void, homebrew = false) {
+export async function startCatalog(kinds: ImportKind[], onDone?: () => void, homebrew = false, mmOnly = false) {
   if (job?.status === 'running') return;
   const m = await importer();
   const items = await indexUrls(kinds, homebrew);
-  const fromSitemap = kinds.filter((k) => k === 'spell' || k === 'item');
-  if (!homebrew && fromSitemap.length) items.push(...m.catalogUrls(await fetchText('/import/sitemap'), fromSitemap));
+  const fromSitemap = kinds.filter((k) => k === 'spell' || k === 'item' || k === 'monster');
+  if (!homebrew && fromSitemap.length) items.push(...m.catalogUrls(await fetchText('/import/sitemap'), fromSitemap, { mmOnly }));
   job = { kinds, total: items.length, done: 0, failed: [], status: 'running' };
   notify();
   for (const { url } of items) {
@@ -101,7 +100,9 @@ export async function startCatalog(kinds: ImportKind[], onDone?: () => void, hom
     let error: string | null = null;
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
-        await saveToLibrary(await parsePage(url));
+        const parsed = await parsePage(url);
+        // Только «Monster Manual»: среди первых номеров изредка попадаются существа из других книг
+        if (!(mmOnly && parsed.kind === 'monster' && !/^Monster Manual$/i.test(parsed.data.book ?? ''))) await saveToLibrary(parsed);
         error = null;
         break;
       } catch (e) {

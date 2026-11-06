@@ -9,7 +9,7 @@ function Actions({ title, list, monster, roll }: { title: string; list?: Monster
   if (!list?.length) return null;
   return (
     <>
-      <h4>{title}</h4>
+      {title && <h4>{title}</h4>}
       {list.map((a, i) => (
         <p key={i} style={{ margin: '4px 0' }}>
           <b>
@@ -65,11 +65,25 @@ export function Statblock({ m, roll }: { m: Monster; roll?: Roll }) {
       {!!m.conditionImmunities?.length && <div><b>Иммунитет к состояниям</b> {names(m.conditionImmunities, CONDITIONS)}</div>}
       {m.senses && <div><b>Чувства</b> {m.senses}</div>}
       {m.languages && <div><b>Языки</b> {m.languages}</div>}
-      <div><b>Опасность</b> {m.cr}{m.xp ? ` (${m.xp} опыта)` : ''}</div>
+      <div><b>Опасность</b> {m.cr}{m.xp ? ` (${m.xp.toLocaleString('ru-RU')} опыта)` : ''}</div>
+      {m.habitat && <div><b>Местность</b> {m.habitat}</div>}
       <Actions title="Особенности" list={m.traits} monster={m.name} roll={roll} />
       <Actions title="Действия" list={m.actions} monster={m.name} roll={roll} />
+      <Actions title="Бонусные действия" list={m.bonusActions} monster={m.name} roll={roll} />
       <Actions title="Реакции" list={m.reactions} monster={m.name} roll={roll} />
-      <Actions title="Легендарные действия" list={m.legendary} monster={m.name} roll={roll} />
+      {m.legendaryIntro && !!m.legendary?.length && (
+        <>
+          <h4>Легендарные действия</h4>
+          <p className="small muted" style={{ margin: '4px 0' }}>{m.legendaryIntro}</p>
+        </>
+      )}
+      <Actions title={m.legendaryIntro ? '' : 'Легендарные действия'} list={m.legendary} monster={m.name} roll={roll} />
+      {m.description && (
+        <details style={{ marginTop: 10 }}>
+          <summary className="small">Описание, логово и прочее</summary>
+          <div className="small" style={{ whiteSpace: 'pre-line', marginTop: 6 }}>{m.description}</div>
+        </details>
+      )}
     </div>
   );
 }
