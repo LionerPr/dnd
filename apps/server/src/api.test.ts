@@ -48,6 +48,7 @@ describe('игра целиком', () => {
   let dm: Awaited<ReturnType<typeof signup>>;
   let player: Awaited<ReturnType<typeof signup>>;
   let raceId: string, classId: string, charId: string, campaignId: string, invite: string;
+  let imageId = '';
 
   it('регистрация: первый — администратор, повторный логин занят', async () => {
     dm = await signup('master');
@@ -298,5 +299,49 @@ describe('игра целиком', () => {
     await as(player.cookie, 'POST', '/api/content', { kind: 'race', name: 'Драконорождённый', data: { kind: 'race', size: 'medium', speed: 30, features: [] } });
     const yo = await as(player.cookie, 'GET', `/api/content?q=${encodeURIComponent('драконорожденный')}`);
     expect(yo.body.items.map((i: { name: string }) => i.name)).toContain('Драконорождённый');
+  });
+
+  it('файлы кампании: загрузка кусками, скачивание участником', async () => {
+    const bytes = new Uint8Array(2000).map((_, i) => i % 251);
+    const meta = await as(player.cookie, 'POST', `/api/campaigns/${campaignId}/files`, { name: 'карта.png', mime: 'image/png', size: bytes.length, kind: 'image' });
+    expect(meta.status).toBe(200);
+    expect((await as(player.cookie, 'POST', `/api/campaigns/${campaignId}/files`, { name: 'тема.mp3', mime: 'audio/mpeg', size: 10, kind: 'audio' })).status).toBe(403);
+    expect((await as(player.cookie, 'POST', `/api/files/${meta.body.id}/complete`, {})).status).toBe(400);
+    const put = await fetch(`${base}/api/files/${meta.body.id}/chunks/0`, { method: 'PUT', headers: { cookie: player.cookie }, body: bytes });
+    expect(put.status).toBe(200);
+    expect((await as(player.cookie, 'POST', `/api/files/${meta.body.id}/complete`, {})).status).toBe(200);
+    const got = await fetch(`${base}/api/files/${meta.body.id}`, { headers: { cookie: dm.cookie } });
+    expect(got.status).toBe(200);
+    expect(new Uint8Array(await got.arrayBuffer())).toEqual(bytes);
+    const outsider = await signup('outsider');
+    expect((await fetch(`${base}/api/files/${meta.body.id}`, { headers: { cookie: outsider.cookie } })).status).toBe(403);
+    const list = await as(dm.cookie, 'GET', `/api/campaigns/${campaignId}/files`);
+    expect(list.body.files.map((f: { name: string }) => f.name)).toContain('карта.png');
+    imageId = meta.body.id;
+  });
+
+  it('доска: фишки, права, скрытые фишки, рисунки, медиа, музыка', async () => {
+    const op = (who: { cookie: string }, ...ops: unknown[]) => as(who.cookie, 'POST', `/api/campaigns/${campaignId}/board`, { ops });
+    const mine = await op(player, { t: 'token-add', token: { kind: 'character', refId: charId, label: 'Герой', x: 100, y: 100 } });
+    expect(mine.status).toBe(200);
+    const heroToken = mine.body.ops[0].token.id;
+    expect((await op(player, { t: 'token-add', token: { kind: 'custom', label: 'Ловушка', x: 1, y: 1 } })).status).toBe(403);
+    const goblin = await op(dm, { t: 'token-add', token: { kind: 'custom', label: 'Засада', x: 500, y: 500, hidden: true } });
+    const hiddenId = goblin.body.ops[0].token.id;
+    expect((await op(player, { t: 'token-move', id: heroToken, x: 140, y: 170 })).status).toBe(200);
+    expect((await op(player, { t: 'token-move', id: hiddenId, x: 0, y: 0 })).status).toBe(403);
+    const pb = await as(player.cookie, 'GET', `/api/campaigns/${campaignId}/board`);
+    expect(pb.body.board.tokens.map((t: { id: string }) => t.id)).toEqual([heroToken]);
+    expect(pb.body.board.tokens[0]).toMatchObject({ x: 140, y: 170 });
+    expect((await as(dm.cookie, 'GET', `/api/campaigns/${campaignId}/board`)).body.board.tokens).toHaveLength(2);
+    expect((await op(player, { t: 'stroke', stroke: { color: '#ff0000', width: 3, points: [0, 0, 10, 10, 20, 5] } })).status).toBe(200);
+    await op(dm, { t: 'settings', playersDraw: false, mapFileId: imageId });
+    expect((await op(player, { t: 'stroke', stroke: { color: '#ff0000', width: 3, points: [0, 0, 10, 10] } })).status).toBe(403);
+    expect((await op(player, { t: 'media-add', fileId: imageId, caption: 'Нашли записку' })).status).toBe(200);
+    expect((await op(player, { t: 'music', playing: true })).status).toBe(403);
+    const b = (await as(dm.cookie, 'GET', `/api/campaigns/${campaignId}/board`)).body.board;
+    expect(b.strokes).toHaveLength(1);
+    expect(b.mapFileId).toBe(imageId);
+    expect(b.media[0].caption).toBe('Нашли записку');
   });
 });

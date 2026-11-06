@@ -146,6 +146,33 @@ const MIGRATIONS: string[] = [
   `,
   // Модераторы: могут создавать и править контент библиотеки, как администратор
   `ALTER TABLE users ADD COLUMN is_moderator integer NOT NULL DEFAULT 0`,
+  // Файлы кампании (карты, картинки, музыка) кусками и доска: карта, фишки, рисунки, медиа, музыка
+  `
+  CREATE TABLE files (
+    id text PRIMARY KEY,
+    campaign_id text NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE,
+    owner_id text NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    name text NOT NULL,
+    mime text NOT NULL,
+    size integer NOT NULL,
+    chunks integer NOT NULL,
+    kind text NOT NULL,
+    complete integer NOT NULL DEFAULT 0,
+    created_at text NOT NULL ${NOW_DEFAULT}
+  );
+  CREATE INDEX files_campaign ON files(campaign_id);
+  CREATE TABLE file_chunks (
+    file_id text NOT NULL REFERENCES files(id) ON DELETE CASCADE,
+    idx integer NOT NULL,
+    data blob NOT NULL,
+    PRIMARY KEY (file_id, idx)
+  );
+  CREATE TABLE boards (
+    campaign_id text PRIMARY KEY REFERENCES campaigns(id) ON DELETE CASCADE,
+    data text NOT NULL,
+    version integer NOT NULL DEFAULT 1
+  );
+  `,
 ];
 
 let migrated: Promise<void> | null = null;

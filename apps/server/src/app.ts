@@ -9,6 +9,8 @@ import { campaignRoutes } from './routes/campaigns.js';
 import { characterRoutes } from './routes/characters.js';
 import { contentRoutes } from './routes/content.js';
 import { importRoutes } from './routes/import.js';
+import { boardRoutes } from './routes/board.js';
+import { downloadFile, fileRoutes, uploadChunk } from './routes/files.js';
 import { HttpError } from './errors.js';
 
 export interface Env {
@@ -32,6 +34,8 @@ function routes(deps: AppDeps) {
   characterRoutes(api, deps);
   campaignRoutes(api, deps);
   importRoutes(api, deps);
+  boardRoutes(api, deps);
+  fileRoutes(api, deps);
   api.get('/health', () => ({ ok: true }));
   return api;
 }
@@ -73,6 +77,12 @@ export async function handleRequest(request: Request, env: Env, ctx: ExecutionCo
   const db = fromD1(env.DB);
   if (url.pathname.startsWith('/ws/')) return websocket(request, env, db, url.pathname);
   if (!url.pathname.startsWith('/api/')) return json({ error: 'Не найдено' }, 404);
+  // Файлы — двоичные данные, мимо JSON-маршрутизатора
+  const fm = /^\/api\/files\/([\w-]+)(?:\/chunks\/(\d+))?$/.exec(url.pathname);
+  if (fm && ((request.method === 'GET' && !fm[2]) || (request.method === 'PUT' && fm[2]))) {
+    const user = await userFromToken(db, parseCookies(request.headers.get('Cookie'))[COOKIE]);
+    return fm[2] ? uploadChunk(request, env.DB, user, fm[1]!, Number(fm[2])) : downloadFile(request, env.DB, user, fm[1]!, ctx);
+  }
   const fixed = env.FIXED_RNG ? Number(env.FIXED_RNG) : null;
   const deps: AppDeps = {
     db,
