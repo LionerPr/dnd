@@ -36,6 +36,11 @@ import { useAuth } from '../lib/auth';
 import { conditionName, plural, signed, timeAgo } from '../lib/format';
 import { useRoller } from '../lib/hooks';
 import { isConnected, subscribe } from '../lib/socket';
+import { boardKey, boardSocketHandlers, filesKey } from '../lib/board';
+import { BoardView } from '../components/room/Board';
+import { Lightbox, MediaView } from '../components/room/Media';
+import { MusicEngineMount, MusicView, SoundUnlock } from '../components/room/Music';
+import { Tabs } from '../components/ui';
 
 type Target = { kind: 'character' | 'npc'; id: string };
 type Cmd = { type: string; [k: string]: unknown };
@@ -62,8 +67,13 @@ function useRoom(id: string) {
     let first = true;
     const handlers: Record<string, (p: any) => void> = {
       // Первое подключение — данные уже грузятся запросом; после обрыва — перечитать всё
+      ...boardSocketHandlers(qc, id),
       connect: () => {
-        if (!first) qc.invalidateQueries({ queryKey: key });
+        if (!first) {
+          qc.invalidateQueries({ queryKey: key });
+          qc.invalidateQueries({ queryKey: boardKey(id) });
+          qc.invalidateQueries({ queryKey: filesKey(id) });
+        }
         first = false;
       },
       character: (view: CharacterView) =>
@@ -102,6 +112,21 @@ export function CampaignPage() {
   const toast = useToast();
   const { user } = useAuth();
   const [selected, setSelected] = useState<Target[]>([]);
+  const [view, setView] = useState<'room' | 'board' | 'media' | 'music'>(() => {
+    try {
+      return (sessionStorage.getItem(`room-view:${id}`) as 'room') || 'room';
+    } catch {
+      return 'room';
+    }
+  });
+  const pickView = (v: typeof view) => {
+    setView(v);
+    try {
+      sessionStorage.setItem(`room-view:${id}`, v);
+    } catch {
+      // не сохранилось — не страшно
+    }
+  };
   const [modal, setModal] = useState<null | { type: 'settings' } | { type: 'npc'; ally?: boolean } | { type: 'achievement'; a?: Achievement } | { type: 'award'; a: Achievement } | { type: 'character'; id: string } | { type: 'statblock'; npc: Npc } | { type: 'attach' }>(null);
   const onError = (e: Error) => toast(e.message, 'error');
   const refresh = () => {
@@ -183,8 +208,26 @@ export function CampaignPage() {
         </div>
       </div>
 
-      <div className="room">
-        <div className="stack-lg">
+      <MusicEngineMount campaignId={id} />
+      <SoundUnlock />
+      <Lightbox />
+      <div className="room-tabs">
+        <Tabs
+          tabs={[
+            { id: 'room', label: 'Комната' },
+            { id: 'board', label: 'Доска' },
+            { id: 'media', label: 'Медиа' },
+            { id: 'music', label: 'Музыка' },
+          ]}
+          value={view}
+          onChange={pickView}
+        />
+      </div>
+      <div className={`room${view === 'board' ? ' room-wide' : ''}`}>
+        {view === 'board' && <BoardView campaignId={id} dm={dm} userId={user?.id ?? ''} characters={snap.characters} npcs={snap.npcs} />}
+        {view === 'media' && <MediaView campaignId={id} dm={dm} userId={user?.id ?? ''} />}
+        {view === 'music' && <MusicView campaignId={id} dm={dm} />}
+        <div className="stack-lg" style={view !== 'room' ? { display: 'none' } : undefined}>
           {/* ---------- Отряд ---------- */}
           <section>
             <div className="row between" style={{ marginBottom: 10 }}>
