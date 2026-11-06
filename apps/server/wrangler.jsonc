@@ -15,7 +15,7 @@
       "binding": "DB",
       "database_name": "letopis",
       // После `wrangler d1 create letopis` впишите сюда выданный database_id
-      "database_id": "00000000-0000-0000-0000-000000000000"
+      "database_id": "647f1d1b-2f5b-4cd6-8cbd-a75c99d0b00c"
     }
   ],
   "durable_objects": {
