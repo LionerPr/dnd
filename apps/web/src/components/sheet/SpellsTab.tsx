@@ -62,6 +62,8 @@ export function SpellsTab({ view, canEdit, cmd, roll, save }: { view: CharacterV
   const [picker, setPicker] = useState(false);
   const [open, setOpen] = useState<Spell | null>(null);
   const [slotLevel, setSlotLevel] = useState(1);
+  const [onlyClass, setOnlyClass] = useState(true);
+  const classIds = c.classes.map((x) => x.classId);
   const ids = c.spellsKnown;
   const q = useQuery({
     queryKey: ['batch', ids.join(',')],
@@ -222,7 +224,14 @@ export function SpellsTab({ view, canEdit, cmd, roll, save }: { view: CharacterV
           kind="spell"
           title="Добавить заклинание"
           keepOpen
-          filter={(r) => !c.spellsKnown.includes(r.id)}
+          filter={(r) => !c.spellsKnown.includes(r.id) && (!onlyClass || !classIds.length || (r.data.classes ?? []).some((id: string) => classIds.includes(id)))}
+          toolbar={
+            classIds.length > 0 && (
+              <label className="check small nowrap">
+                <input type="checkbox" checked={onlyClass} onChange={(e) => setOnlyClass(e.target.checked)} /> только мой класс
+              </label>
+            )
+          }
           onClose={() => setPicker(false)}
           onPick={(row) => row && save((d) => ({ ...d, spellsKnown: [...d.spellsKnown, row.id] }))}
         />

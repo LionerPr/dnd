@@ -26,7 +26,7 @@ export function contentRoutes(api: FastifyInstance, { db }: AppDeps) {
         q: z.string().max(100).optional(),
         classId: z.string().optional(),
         level: z.coerce.number().int().min(0).max(9).optional(),
-        limit: z.coerce.number().int().min(1).max(500).optional(),
+        limit: z.coerce.number().int().min(1).max(3000).optional(),
         offset: z.coerce.number().int().min(0).optional(),
       })
       .parse(req.query);

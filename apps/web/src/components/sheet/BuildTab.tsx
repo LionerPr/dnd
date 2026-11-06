@@ -188,7 +188,7 @@ export function BuildTab({ view, save }: { view: CharacterView; save: Save }) {
               .map(([id, values]) => (
                 <div key={id} className="row wrap" style={{ gap: 6 }}>
                   <span className="small muted">{id.startsWith('class.') ? 'Навыки класса' : id.startsWith('asi.') ? `Увеличение характеристик, ${id.split('.').pop()} ур.` : 'Выбрано'}:</span>
-                  {values.map((v, i) => (
+                  {values.map((v, i) => id.startsWith('asi.') && values.indexOf(v) !== i ? null : (
                     <span key={`${v}-${i}`} className="chip accent">
                       {choiceLabel(Object.keys(SKILLS).includes(v) ? 'skill' : ABILITIES.includes(v as Ability) ? 'ability' : 'tool', v)}
                       {id.startsWith('asi.') && values.filter((x) => x === v).length === 2 && i === values.indexOf(v) ? ' +2' : ''}

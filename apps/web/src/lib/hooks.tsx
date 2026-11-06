@@ -102,7 +102,7 @@ export function useRoller(campaignId: string | null | undefined, characterId?: s
 }
 
 export function useContentList(kind: string, extra: Record<string, string | number | undefined> = {}) {
-  const params = new URLSearchParams({ kind, limit: '500' });
+  const params = new URLSearchParams({ kind, limit: '3000' });
   for (const [k, v] of Object.entries(extra)) if (v !== undefined && v !== '') params.set(k, String(v));
   return useQuery({ queryKey: ['content', kind, extra], queryFn: () => api<{ items: ContentRow[] }>(`/content?${params}`) });
 }

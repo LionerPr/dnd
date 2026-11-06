@@ -14,6 +14,7 @@ export function ContentPicker({
   filter,
   extra,
   keepOpen,
+  toolbar,
 }: {
   kind: string;
   title: string;
@@ -23,6 +24,7 @@ export function ContentPicker({
   filter?: (r: ContentRow) => boolean;
   extra?: Record<string, string | number | undefined>;
   keepOpen?: boolean;
+  toolbar?: React.ReactNode;
 }) {
   const [q, setQ] = useState('');
   const list = useContentList(kind, extra);
@@ -36,6 +38,7 @@ export function ContentPicker({
       <div className="row">
         <Search size={16} className="muted" />
         <input className="input" autoFocus placeholder="Поиск по названию" value={q} onChange={(e) => setQ(e.target.value)} />
+        {toolbar}
       </div>
       {list.isLoading ? (
         <Loading />

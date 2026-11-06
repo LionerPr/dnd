@@ -43,7 +43,7 @@ export async function listContent(db: Db, userId: string, opts: { kind?: string;
     params.push(opts.level);
     where += ` AND (c.data->>'level')::int = $${params.length}`;
   }
-  params.push(Math.min(opts.limit ?? 100, 500), opts.offset ?? 0);
+  params.push(Math.min(opts.limit ?? 100, 3000), opts.offset ?? 0);
   return db.query<ContentRow>(
     `SELECT c.id, c.kind, c.name, c.owner_id, c.campaign_id, c.visibility, c.source, c.source_url, c.updated_at,
        (c.data - 'description' - 'features' - 'traits' - 'actions' - 'levels' - 'higherLevels' - 'subclasses' - 'subraces' - 'reactions' - 'legendary')
