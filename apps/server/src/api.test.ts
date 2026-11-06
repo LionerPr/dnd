@@ -33,7 +33,7 @@ async function signup(username: string) {
 
 beforeAll(async () => {
   worker = await unstable_startWorker({
-    config: resolve(import.meta.dirname, '../wrangler.jsonc'),
+    config: resolve(import.meta.dirname, '../../../wrangler.jsonc'),
     bindings: { FIXED_RNG: { type: 'plain_text', value: '0.5' } },
     dev: { persist: false, server: { hostname: '127.0.0.1', port: 0 }, inspector: false, logLevel: 'warn' } as never,
   });

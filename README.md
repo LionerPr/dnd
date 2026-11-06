@@ -11,20 +11,19 @@
 ```bash
 corepack enable                      # включает pnpm
 pnpm install
-cd apps/server
 npx wrangler login                   # откроет браузер для входа в Cloudflare
 npx wrangler d1 create letopis       # создаст базу и покажет database_id
 ```
 
-Впишите выданный `database_id` в `apps/server/wrangler.jsonc`, затем:
+Впишите выданный `database_id` в `wrangler.jsonc` в корне, затем:
 
 ```bash
-pnpm run deploy                      # соберёт интерфейс и выложит всё вместе
+npx wrangler deploy                  # соберёт интерфейс и выложит всё вместе
 ```
 
 Wrangler напечатает адрес вида `https://letopis.<ваше-имя>.workers.dev` — его и отправляйте игрокам. Таблицы в базе создаются сами при первом запросе.
 
-Обновление после изменений в коде — снова `pnpm run deploy` из `apps/server`. Можно и без компьютера: в панели Cloudflare → Workers → «Import a repository» подключите репозиторий GitHub, корневая папка `apps/server`, команда сборки `pnpm install && pnpm --filter @dnd/web build`, команда выкладки `npx wrangler deploy`. Тогда каждый push выкладывается сам.
+Обновление после изменений в коде — снова `npx wrangler deploy`. Можно и без компьютера: в панели Cloudflare → Workers & Pages → «Import a repository» подключите репозиторий GitHub с настройками по умолчанию (команда выкладки `npx wrangler deploy`). Тогда каждый push выкладывается сам.
 
 ### Хватит ли бесплатного тарифа
 
@@ -43,7 +42,7 @@ Wrangler напечатает адрес вида `https://letopis.<ваше-и�
 ```bash
 pnpm install
 pnpm --filter @dnd/web build
-cd apps/server && npx wrangler dev   # всё приложение на http://localhost:8787 с локальной базой
+npx wrangler dev                     # всё приложение на http://localhost:8787 с локальной базой
 pnpm --filter @dnd/web dev           # (по желанию) интерфейс с горячей перезагрузкой на :5173
 pnpm -r test                         # правила, разбор dnd.su и сквозной тест API в локальном Cloudflare
 ```

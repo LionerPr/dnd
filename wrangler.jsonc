@@ -1,11 +1,13 @@
 {
   // «Летопись» на Cloudflare: воркер с API, база D1, живые комнаты на Durable Objects, фронтенд — статикой.
   "name": "letopis",
-  "main": "src/index.ts",
+  "main": "apps/server/src/index.ts",
+  // Перед выкладкой собирается интерфейс — отдельная команда сборки в Cloudflare не нужна
+  "build": { "command": "pnpm --filter @dnd/web build" },
   "compatibility_date": "2026-10-01",
   "compatibility_flags": ["nodejs_compat"],
   "assets": {
-    "directory": "../web/dist",
+    "directory": "apps/web/dist",
     "binding": "ASSETS",
     "not_found_handling": "single-page-application",
     "run_worker_first": ["/api/*", "/ws/*"]
@@ -14,7 +16,6 @@
     {
       "binding": "DB",
       "database_name": "letopis",
-      // После `wrangler d1 create letopis` впишите сюда выданный database_id
       "database_id": "647f1d1b-2f5b-4cd6-8cbd-a75c99d0b00c"
     }
   ],

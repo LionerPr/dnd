@@ -7,6 +7,10 @@
     "test": "pnpm -r test",
     "typecheck": "pnpm -r typecheck",
     "dev:server": "pnpm --filter @dnd/server dev",
-    "dev:web": "pnpm --filter @dnd/web dev"
+    "dev:web": "pnpm --filter @dnd/web dev",
+    "deploy": "wrangler deploy"
+  },
+  "devDependencies": {
+    "wrangler": "^4.158.0"
   }
 }
