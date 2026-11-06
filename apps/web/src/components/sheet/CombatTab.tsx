@@ -89,13 +89,20 @@ export function CombatTab({ view, canEdit, cmd, roll }: { view: CharacterView; c
             <Swords size={16} style={{ verticalAlign: -3 }} /> Нет экипированного оружия. Безоружный удар: {signed(sheet.abilities.str.mod + sheet.proficiencyBonus)} к попаданию, {Math.max(1, 1 + sheet.abilities.str.mod)} дробящего.
           </div>
         ) : (
-          sheet.attacks.map((a) => (
+          <>
+          <div className="attack attack-head small muted">
+            <span />
+            <span>к попаданию</span>
+            <span>урон</span>
+            <span>{sheet.attacks.some((a) => a.versatile) ? 'двумя руками' : ''}</span>
+          </div>
+          {sheet.attacks.map((a) => (
             <div key={a.id} className="attack">
               <div>
                 <div className="name">{a.name}</div>
                 <div className="small muted">{[a.damageType && damageName(a.damageType), a.range, ...a.properties].filter(Boolean).join(' · ')}</div>
               </div>
-              <button className="btn sm" onClick={() => roll(`1к20${a.bonus >= 0 ? '+' : ''}${a.bonus}`, `${a.name}: атака`)}>
+              <button className="btn sm" title="Бонус к броску атаки: к20 + это число против КД цели" onClick={() => roll(`1к20${a.bonus >= 0 ? '+' : ''}${a.bonus}`, `${a.name}: атака`)}>
                 {signed(a.bonus)}
               </button>
               <button className="btn sm" onClick={() => roll(dmg(a.damage), `${a.name}: урон`)}>
@@ -112,7 +119,8 @@ export function CombatTab({ view, canEdit, cmd, roll }: { view: CharacterView; c
                 </button>
               )}
             </div>
-          ))
+          ))}
+          </>
         )}
       </div>
       <Trackers view={view} canEdit={canEdit} cmd={cmd} />
