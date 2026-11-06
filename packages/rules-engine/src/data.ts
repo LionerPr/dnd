@@ -130,3 +130,29 @@ export const XP_THRESHOLDS = [
   0, 0, 300, 900, 2700, 6500, 14000, 23000, 34000, 48000, 64000, 85000, 100000, 120000, 140000,
   165000, 195000, 225000, 265000, 305000, 355000,
 ];
+
+/** Языки 5e (PHB): обычные и экзотические. stem — начало слова в тексте dnd.su («на Дварфийском», «Гоблинский») */
+export const LANGUAGES: { name: string; stem: RegExp; exotic?: boolean }[] = [
+  { name: 'Общий', stem: /^общ/i },
+  { name: 'Дварфийский', stem: /^дварф/i },
+  { name: 'Эльфийский', stem: /^эльф/i },
+  { name: 'Великаний', stem: /^велика/i },
+  { name: 'Гномий', stem: /^гном/i },
+  { name: 'Гоблинский', stem: /^гоблин/i },
+  { name: 'Полуросликов', stem: /^полурослик/i },
+  { name: 'Орочий', stem: /^ороч|^орк/i },
+  { name: 'Бездны', stem: /^бездн/i, exotic: true },
+  { name: 'Глубинная речь', stem: /^глубинн/i, exotic: true },
+  { name: 'Драконий', stem: /^драконь|^драконий|^драконск/i, exotic: true },
+  { name: 'Инфернальный', stem: /^инферн/i, exotic: true },
+  { name: 'Небесный', stem: /^небесн/i, exotic: true },
+  { name: 'Первичный', stem: /^первичн/i, exotic: true },
+  { name: 'Сильван', stem: /^сильван/i, exotic: true },
+  { name: 'Подземный', stem: /^подземн/i, exotic: true },
+  { name: 'Акван', stem: /^акван/i, exotic: true },
+  { name: 'Ауран', stem: /^ауран/i, exotic: true },
+  { name: 'Игнан', stem: /^игнан/i, exotic: true },
+  { name: 'Терран', stem: /^терран/i, exotic: true },
+  { name: 'Воровской жаргон', stem: /^воровск/i, exotic: true },
+  { name: 'Друидический', stem: /^друидическ/i, exotic: true },
+];

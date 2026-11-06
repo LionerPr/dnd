@@ -16,9 +16,18 @@ import type {
   Effect,
   Feature,
   Item,
+  LevelCount,
   ProficiencyKind,
   Spellcasting,
 } from './types.js';
+
+/** Значение «по уровню»: { 3: 2, 10: 3 } на 12-м уровне даёт 3; число — как есть; ниже первого порога — 0. */
+export function atLevel(count: LevelCount | undefined, level: number): number {
+  if (count === undefined) return 0;
+  if (typeof count === 'number') return count;
+  const keys = Object.keys(count).map(Number).filter((k) => k <= level).sort((a, b) => b - a);
+  return keys.length ? count[keys[0]!] ?? 0 : 0;
+}
 
 export const abilityMod = (score: number): number => Math.floor((score - 10) / 2);
 
@@ -32,6 +41,8 @@ export interface SourcedFeature extends Feature {
   origin: string;
   /** Уровень класса-источника, нужен для ресурсов, зависящих от уровня */
   sourceLevel: number;
+  /** Для умения с выбором частей (боевой стиль, метамагия): выбранные части */
+  chosenParts?: string[];
 }
 
 /** Все активные умения персонажа: раса, подраса, классы и подклассы до текущего уровня, черты, ручные. */
@@ -200,7 +211,8 @@ export interface Sheet {
   overridden: string[];
   /** Выборы, которые игрок ещё не сделал: id эффекта → сколько нужно выбрать */
   /** asi: можно вместо характеристик взять черту (значение выбора «feat:<id>:<название>») */
-  pendingChoices: { id: string; kind: string; pick: number; of: string[] | 'any'; origin: string; asi?: boolean }[];
+  /** kind feature — выбрать части умения featureId (боевой стиль); expertise — навыки для компетентности */
+  pendingChoices: { id: string; kind: string; pick: number; of: string[] | 'any'; origin: string; asi?: boolean; featureId?: string }[];
 }
 
 function casterLevelFor(cls: CharacterClass, entryLevel: number, subclassCasting: Spellcasting | undefined, multiclass: boolean) {
@@ -247,7 +259,8 @@ export function computeSheet(c: Character, content: ContentIndex): Sheet {
     firstClass.saves.forEach((s) => profs.save.add(s));
     firstClass.armor.forEach((s) => profs.armor.add(s));
     firstClass.weapons.forEach((s) => profs.weapon.add(s));
-    firstClass.tools.forEach((s) => profs.tool.add(s));
+    // Старые импорты: «Выберите один вид инструмента…» попадал в список как текст
+    firstClass.tools.filter((t) => !/выберите|^либо|выбор/i.test(t)).forEach((s) => profs.tool.add(s));
     (c.choices[`class.${firstClass.id}.skills`] ?? []).slice(0, firstClass.skillChoices.pick).forEach((s) => profs.skill.add(s));
   }
   const pendingChoices: Sheet['pendingChoices'] = [];
@@ -278,6 +291,31 @@ export function computeSheet(c: Character, content: ContentIndex): Sheet {
       }
     }
     if (e.type === 'expertise') e.skills.forEach((s) => expertise.add(s));
+  }
+
+  // Умения с выбором частей: боевой стиль, метамагия, воззвания
+  for (const f of features) {
+    if (f.choose === undefined || !f.parts?.length) continue;
+    const id = `part.${f.id}`;
+    const count = atLevel(f.choose, f.sourceLevel);
+    const available = f.parts.filter((p) => (p.minLevel ?? 0) <= f.sourceLevel).map((p) => p.name);
+    const chosen = (c.choices[id] ?? []).filter((n) => available.includes(n)).slice(0, count);
+    f.chosenParts = chosen;
+    if (chosen.length < count) {
+      pendingChoices.push({ id, kind: 'feature', pick: count - chosen.length, of: available.filter((n) => !chosen.includes(n)), origin: `${f.origin}: ${f.name}`, featureId: f.id });
+    }
+  }
+  // Компетентность: из навыков, которыми персонаж уже владеет
+  for (const { effect: e, sourceLevel } of effects) {
+    if (e.type !== 'expertise_choice') continue;
+    const count = atLevel(e.pick, sourceLevel);
+    const options = [...SKILL_KEYS.filter((k) => profs.skill.has(k)), ...(e.tools ?? []).filter((t) => profs.tool.has(t))];
+    const chosen = (c.choices[e.id] ?? []).filter((x) => options.includes(x)).slice(0, count);
+    chosen.forEach((x) => (SKILL_KEYS as readonly string[]).includes(x) && expertise.add(x as Skill));
+    if (chosen.length < count) {
+      const origin = features.find((f) => f.effects?.includes(e))?.origin ?? '';
+      pendingChoices.push({ id: e.id, kind: 'expertise', pick: count - chosen.length, of: options.filter((o) => !chosen.includes(o)), origin });
+    }
   }
 
   const abilities = Object.fromEntries(
@@ -368,12 +406,7 @@ export function computeSheet(c: Character, content: ContentIndex): Sheet {
       case 'condition_immunity': condImmune.add(e.condition); break;
       case 'initiative_bonus': initBonus += e.value; break;
       case 'resource': {
-        let max: number;
-        if (typeof e.max === 'number') max = e.max;
-        else {
-          const keys = Object.keys(e.max).map(Number).filter((k) => k <= sourceLevel).sort((a, b) => b - a);
-          max = keys.length ? e.max[keys[0]!]! : 0;
-        }
+        const max = atLevel(e.max, sourceLevel);
         const prev = resources.find((r) => r.id === e.id);
         if (prev) prev.max = Math.max(prev.max, max);
         else resources.push({ id: e.id, name: e.name, max, used: 0, recharge: e.recharge });

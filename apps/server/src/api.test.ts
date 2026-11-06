@@ -100,6 +100,17 @@ describe('игра целиком', () => {
     expect((await as(player.cookie, 'PUT', `/api/characters/${charId}`, { data, version: created.body.version })).status).toBe(409);
   });
 
+  it('предпросмотр уровня: лист считается, но не сохраняется', async () => {
+    const cur = await as(player.cookie, 'GET', `/api/characters/${charId}`);
+    const draft = { ...cur.body.data, classes: [{ classId, level: 3 }], hpRolls: [undefined, 7, 7] };
+    const pv = await as(player.cookie, 'POST', `/api/characters/${charId}/preview`, { data: draft });
+    expect(pv.status).toBe(200);
+    expect(pv.body.sheet.level).toBe(3);
+    expect(pv.body.sheet.maxHp).toBe(15 + 2 * (7 + 3));
+    expect((await as(player.cookie, 'GET', `/api/characters/${charId}`)).body.sheet.level).toBe(1);
+    expect((await as(dm.cookie, 'POST', `/api/characters/${charId}/preview`, { data: draft })).status).toBe(403);
+  });
+
   it('кампания, приглашение, вход по коду', async () => {
     const c = await as(dm.cookie, 'POST', '/api/campaigns', { name: 'Рудники Фанделвера' });
     campaignId = c.body.campaign.id;

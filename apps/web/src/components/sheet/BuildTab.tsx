@@ -1,12 +1,12 @@
-import { ABILITIES, ABILITY_NAMES, SKILLS, abilityMod, type Ability, type Character, type CharacterClass, type Race } from '@dnd/rules-engine';
+import { ABILITIES, ABILITY_NAMES, LANGUAGES, abilityMod, type Ability, type Character, type CharacterClass, type Race } from '@dnd/rules-engine';
 import { useQuery } from '@tanstack/react-query';
-import { Plus, Trash2, X } from 'lucide-react';
+import { Plus, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api, type CharacterView, type ContentRow } from '../../api/client';
 import { bookShort, signed } from '../../lib/format';
 import { useContentList } from '../../lib/hooks';
-import { ContentPicker } from '../ContentPicker';
+import { ChoiceRow, ChosenList } from './Choices';
 import { Field, NumberInput, Segmented } from '../ui';
 
 type Save = (u: (c: Character) => Character) => void;
@@ -18,12 +18,6 @@ function useFull<T>(id: string | undefined) {
   return useQuery({ queryKey: ['content-item', id], queryFn: () => api<{ item: ContentRow }>(`/content/${id}`).then((r) => r.item.data as T), enabled: !!id });
 }
 
-const choiceLabel = (kind: string, key: string) => {
-  if (key.startsWith('feat:')) return `Черта: ${key.split(':').slice(2).join(':') || 'без названия'}`;
-  if (kind === 'skill') return (SKILLS as Record<string, { name: string }>)[key]?.name ?? key;
-  if (kind === 'ability') return ABILITY_NAMES[key as Ability]?.full ?? key;
-  return key.replace(/^tools\./, '');
-};
 
 export function BuildTab({ view, save }: { view: CharacterView; save: Save }) {
   const c = view.data;
@@ -33,7 +27,6 @@ export function BuildTab({ view, save }: { view: CharacterView; save: Save }) {
   const race = useFull<Race>(c.raceId);
   const [method, setMethod] = useState<'manual' | 'standard' | 'points'>('manual');
   const [newFeature, setNewFeature] = useState({ name: '', description: '' });
-  const [featFor, setFeatFor] = useState<string | null>(null);
 
   const points = ABILITIES.reduce((s, a) => s + (POINT_COST[c.baseAbilities[a]] ?? 99), 0);
   const setAbility = (a: Ability, v: number) => save((d) => ({ ...d, baseAbilities: { ...d.baseAbilities, [a]: v } }));
@@ -154,63 +147,10 @@ export function BuildTab({ view, save }: { view: CharacterView; save: Save }) {
         <div className="build-section">
           <h3>Выборы</h3>
           <div className="stack">
-            {sheet.pendingChoices.map((p) => {
-              const chosen = c.choices[p.id] ?? [];
-              const options = p.of === 'any' ? (p.kind === 'skill' ? Object.keys(SKILLS) : []) : p.of;
-              return (
-                <div key={p.id} className="pending">
-                  <div style={{ marginBottom: 8 }}>
-                    <b>{p.origin}</b>:{' '}
-                    {p.asi
-                      ? chosen.length
-                        ? 'выберите ещё одну характеристику (можно ту же, тогда будет +2)'
-                        : '+2 к одной характеристике (нажмите её дважды), по +1 к двум — или возьмите черту'
-                      : `выберите ещё ${p.pick} (${p.kind === 'skill' ? 'навыки' : p.kind === 'tool' ? 'инструменты' : p.kind === 'ability' ? 'характеристики' : p.kind})`}
-                  </div>
-                  <div className="row wrap" style={{ gap: 6 }}>
-                    {p.asi && !chosen.length && (
-                      <button className="chip accent" onClick={() => setFeatFor(p.id)}>
-                        <Plus size={12} /> Черта
-                      </button>
-                    )}
-                    {options
-                      .filter((o) => p.asi || !chosen.includes(o))
-                      .map((o) => (
-                        <button key={o} className="chip" onClick={() => save((d) => ({ ...d, choices: { ...d.choices, [p.id]: [...(d.choices[p.id] ?? []), o] } }))}>
-                          {choiceLabel(p.kind, o)}
-                        </button>
-                      ))}
-                  </div>
-                </div>
-              );
-            })}
-            {Object.entries(c.choices)
-              .filter(([, v]) => v.length)
-              .map(([id, values]) => (
-                <div key={id} className="row wrap" style={{ gap: 6 }}>
-                  <span className="small muted">{id.startsWith('class.') ? 'Навыки класса' : id.startsWith('asi.') ? `Увеличение характеристик, ${id.split('.').pop()} ур.` : 'Выбрано'}:</span>
-                  {values.map((v, i) => id.startsWith('asi.') && values.indexOf(v) !== i ? null : (
-                    <span key={`${v}-${i}`} className="chip accent">
-                      {choiceLabel(Object.keys(SKILLS).includes(v) ? 'skill' : ABILITIES.includes(v as Ability) ? 'ability' : 'tool', v)}
-                      {id.startsWith('asi.') && values.filter((x) => x === v).length === 2 && i === values.indexOf(v) ? ' +2' : ''}
-                      <button
-                        className="btn ghost xs icon"
-                        style={{ height: 18, width: 18, marginRight: -6 }}
-                        onClick={() =>
-                          save((d) => ({
-                            ...d,
-                            choices: { ...d.choices, [id]: d.choices[id]!.filter((_, j) => j !== i) },
-                            featIds: v.startsWith('feat:') ? d.featIds.filter((f) => f !== v.split(':')[1]) : d.featIds,
-                          }))
-                        }
-                        aria-label="Убрать"
-                      >
-                        <X size={12} />
-                      </button>
-                    </span>
-                  ))}
-                </div>
-              ))}
+            {sheet.pendingChoices.map((p) => (
+              <ChoiceRow key={p.id} p={p} sheet={sheet} data={c} update={save} />
+            ))}
+            <ChosenList data={c} update={save} />
           </div>
         </div>
       ) : null}
@@ -270,8 +210,8 @@ export function BuildTab({ view, save }: { view: CharacterView; save: Save }) {
             </Field>
           ))}
         </div>
-        <Field label="Языки" hint="Через запятую">
-          <input className="input" defaultValue={c.languages.join(', ')} onBlur={(e) => save((d) => ({ ...d, languages: e.target.value.split(',').map((x) => x.trim()).filter(Boolean) }))} />
+        <Field label="Дополнительные языки" hint="Языки расы и класса добавляются сами — здесь выученные сверх них">
+          <LanguagePicker value={c.languages} known={sheet.proficiencies.language} onChange={(languages) => save((d) => ({ ...d, languages }))} />
         </Field>
       </div>
 
@@ -305,17 +245,6 @@ export function BuildTab({ view, save }: { view: CharacterView; save: Save }) {
           <textarea className="textarea" placeholder="Описание" rows={3} value={newFeature.description} onChange={(e) => setNewFeature({ ...newFeature, description: e.target.value })} />
         </div>
       </div>
-      {featFor && (
-        <ContentPicker
-          kind="feat"
-          title="Черта вместо увеличения характеристик"
-          onClose={() => setFeatFor(null)}
-          onPick={(r) =>
-            r &&
-            save((d) => ({ ...d, featIds: [...d.featIds, r.id], choices: { ...d.choices, [featFor]: [`feat:${r.id}:${r.name}`] } }))
-          }
-        />
-      )}
     </div>
   );
 }
@@ -352,6 +281,48 @@ function ClassRow({ index, entry, options, save }: { index: number; entry: Chara
       <button className="btn ghost icon" aria-label="Убрать класс" onClick={() => save((d) => ({ ...d, classes: d.classes.filter((_, i) => i !== index) }))}>
         <Trash2 />
       </button>
+    </div>
+  );
+}
+
+/** Языки чипами: известные от расы — отмечены и не снимаются, остальные — по нажатию */
+export function LanguagePicker({ value, known, onChange }: { value: string[]; known: string[]; onChange: (v: string[]) => void }) {
+  const [custom, setCustom] = useState('');
+  const fromRules = new Set(known.filter((k) => !value.includes(k)));
+  const all = [...new Set([...LANGUAGES.map((l) => l.name), ...value])];
+  return (
+    <div className="stack" style={{ gap: 8 }}>
+      <div className="row wrap" style={{ gap: 6 }}>
+        {all.map((name) => {
+          const on = value.includes(name) || fromRules.has(name);
+          return (
+            <button
+              key={name}
+              type="button"
+              className={`chip${on ? ' accent' : ''}`}
+              disabled={fromRules.has(name)}
+              title={fromRules.has(name) ? 'От расы или класса' : undefined}
+              onClick={() => onChange(on ? value.filter((v) => v !== name) : [...value, name])}
+            >
+              {name}
+            </button>
+          );
+        })}
+      </div>
+      <div className="row" style={{ gap: 6 }}>
+        <input className="input" style={{ maxWidth: 240 }} placeholder="Другой язык" value={custom} onChange={(e) => setCustom(e.target.value)} />
+        <button
+          type="button"
+          className="btn sm"
+          disabled={!custom.trim()}
+          onClick={() => {
+            onChange([...value, custom.trim()]);
+            setCustom('');
+          }}
+        >
+          <Plus /> Добавить
+        </button>
+      </div>
     </div>
   );
 }

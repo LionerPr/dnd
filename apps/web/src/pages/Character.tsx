@@ -1,5 +1,6 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Copy, Download, Moon, Sparkles, Sunrise, Trash2 } from 'lucide-react';
+import { XP_THRESHOLDS } from '@dnd/rules-engine';
+import { ArrowLeft, ArrowUpCircle, Copy, Download, Moon, Sparkles, Sunrise, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { api } from '../api/client';
@@ -9,6 +10,7 @@ import { BuildTab } from '../components/sheet/BuildTab';
 import { CombatTab } from '../components/sheet/CombatTab';
 import { FeaturesTab } from '../components/sheet/FeaturesTab';
 import { GearTab } from '../components/sheet/GearTab';
+import { LevelUpModal } from '../components/sheet/LevelUp';
 import { NotesTab } from '../components/sheet/NotesTab';
 import { RestModal } from '../components/sheet/RestModal';
 import { SpellsTab } from '../components/sheet/SpellsTab';
@@ -29,6 +31,7 @@ export function CharacterPage() {
   const save = useSaveBuild(q.data);
   const roll = useRoller(q.data?.campaignId, id);
   const [rest, setRest] = useState(false);
+  const [levelUp, setLevelUp] = useState(false);
   const tab = (params.get('tab') as Tab) || 'combat';
   const setTab = (t: Tab) => setParams(t === 'combat' ? {} : { tab: t }, { replace: true });
 
@@ -98,9 +101,29 @@ export function CharacterPage() {
           <div className="meta">
             {[raceName, classLine, c.background, c.alignment].filter(Boolean).join(' · ') || 'Раса и класс не выбраны'}
           </div>
+          {configured && (
+            <div className="level-badge">
+              <b>{sheet.level} уровень</b>
+              {sheet.level < 20 && (
+                <>
+                  <span className="xp-bar" title="Опыт до следующего уровня">
+                    <i style={{ width: `${Math.min(100, Math.max(0, ((c.state.xp - XP_THRESHOLDS[sheet.level]!) / (XP_THRESHOLDS[sheet.level + 1]! - XP_THRESHOLDS[sheet.level]!)) * 100))}%` }} />
+                  </span>
+                  <span className="small muted num">
+                    {c.state.xp} / {XP_THRESHOLDS[sheet.level + 1]} опыта
+                  </span>
+                </>
+              )}
+            </div>
+          )}
         </div>
         {canEdit && configured && (
           <div className="row wrap">
+            {sheet.level < 20 && (
+              <button className={`btn ${c.state.xp >= (XP_THRESHOLDS[sheet.level + 1] ?? Infinity) ? 'accent' : ''}`} onClick={() => setLevelUp(true)}>
+                <ArrowUpCircle /> Повысить уровень
+              </button>
+            )}
             <button
               className={`btn ${c.state.inspiration ? 'accent' : ''}`}
               onClick={() => cmd.mutate({ type: 'inspiration', value: !c.state.inspiration })}
@@ -120,7 +143,7 @@ export function CharacterPage() {
 
       {!configured && canEdit && tab !== 'build' && (
         <div className="pending" style={{ marginBottom: 18 }}>
-          Лист пока пуст. <button className="btn sm" onClick={() => setTab('build')}>Открыть конструктор</button> — выберите расу, класс и характеристики.
+          Лист пока пуст. <Link className="btn sm accent" to={`/characters/${id}/create`}>Создать персонажа по шагам</Link> — раса, класс, характеристики и выборы.
         </div>
       )}
 
@@ -154,6 +177,17 @@ export function CharacterPage() {
         </div>
       </div>
 
+      {levelUp && (
+        <LevelUpModal
+          view={view}
+          onClose={() => setLevelUp(false)}
+          onSave={(next) => {
+            save(() => next);
+            setLevelUp(false);
+            toast(`Новый уровень: ${next.classes.reduce((s, x) => s + x.level, 0)}`);
+          }}
+        />
+      )}
       {rest && <RestModal view={view} onClose={() => setRest(false)} onRest={(hitDice) => cmd.mutate({ type: 'short_rest', hitDice }, { onSuccess: () => setRest(false) })} />}
     </main>
   );

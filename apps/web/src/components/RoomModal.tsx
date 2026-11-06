@@ -53,7 +53,7 @@ export function RoomModal({ characters, initialRole, onClose }: { characters: Ow
       qc.invalidateQueries({ queryKey: ['campaigns'] });
       qc.invalidateQueries({ queryKey: ['characters'] });
       // Новому герою сразу нужны раса и класс — открываем его лист на вкладке сборки
-      if (hero === 'new' && r.characterId) nav(`/characters/${r.characterId}?tab=build`);
+      if (hero === 'new' && r.characterId) nav(`/characters/${r.characterId}/create`);
       else nav(`/campaigns/${r.campaign.id}`);
     },
     onError,

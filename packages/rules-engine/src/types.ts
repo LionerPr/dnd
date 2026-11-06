@@ -16,12 +16,27 @@ export type Effect =
   /** Выбор из списка (навыки, инструменты, языки): выбранное хранится в character.choices[id] */
   | { type: 'choice'; id: string; kind: ProficiencyKind; pick: number; of: string[] | 'any' }
   | { type: 'expertise'; skills: Skill[] }
+  /** «Компетентность»: удвоить бонус мастерства для N навыков, которыми персонаж владеет. pick — число или «уровень класса → всего» */
+  | { type: 'expertise_choice'; id: string; pick: LevelCount; tools?: string[] }
   | { type: 'hp_per_level'; value: number }
   | { type: 'ac_bonus'; value: number }
   /** Защита без доспехов и подобное: 10 + модификаторы */
   | { type: 'ac_formula'; base: number; abilities: Ability[]; allowShield: boolean }
   | { type: 'initiative_bonus'; value: number }
   | { type: 'resource'; id: string; name: string; max: number | Partial<Record<number, number>>; recharge: 'short' | 'long' | 'none' };
+
+/** Число, растущее с уровнем класса: { 3: 2, 10: 3, 17: 4 } — с 3-го уровня 2, с 10-го 3… */
+export type LevelCount = number | Partial<Record<number, number>>;
+
+/** Часть умения: техника ци, вариант боевого стиля, метамагия, воззвание */
+export interface FeaturePart {
+  name: string;
+  description: string;
+  /** Опциональный вариант (например, из «Котла Таши») */
+  optional?: boolean;
+  /** Доступно с этого уровня класса */
+  minLevel?: number;
+}
 
 export interface Feature {
   id: string;
@@ -33,6 +48,10 @@ export interface Feature {
   optional?: boolean;
   /** «Увеличение характеристик»: на каждом уровне, где умение открывается, игрок выбирает +2/+1+1 или черту */
   asi?: boolean;
+  /** Части умения: показываются отдельными карточками */
+  parts?: FeaturePart[];
+  /** Сколько частей игрок выбирает (по уровню класса). Без этого поля действуют все части. Выбор — в choices[`part.<id умения>`] */
+  choose?: LevelCount;
 }
 
 // ---------- Контент: расы, классы, заклинания, предметы, монстры ----------

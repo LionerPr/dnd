@@ -45,7 +45,7 @@ export function HomePage() {
 
   const createChar = useMutation({
     mutationFn: () => api<{ id: string }>('/characters', { body: { name } }),
-    onSuccess: (r) => nav(`/characters/${r.id}?tab=build`),
+    onSuccess: (r) => nav(`/characters/${r.id}/create`),
     onError,
   });
   if (chars.isLoading || camps.isLoading) return <Loading />;

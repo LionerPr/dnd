@@ -106,3 +106,39 @@ describe('самодельные страницы (homebrew)', () => {
     expect(detectKind('https://dnd.su/homebrew/class/12-x/')).toBe('class');
   });
 });
+
+describe('умения классов: части и выборы', () => {
+  const cls = (f: string) => parseClass(readFileSync(fx(`${f}.html`), 'utf8'), `https://dnd.su/class/${f}/`);
+  it.skipIf(!existsSync(fx('93-monk.html')))('ци монаха — три техники отдельными частями; опциональное умение не прилипает к предыдущему', () => {
+    const m = cls('93-monk');
+    const ki = m.features.find((f) => f.id === 'monk.ki')!;
+    expect(ki.parts?.map((p) => p.name)).toEqual(['Поступь ветра', 'Терпеливая оборона', 'Шквал ударов']);
+    expect(ki.choose).toBeUndefined();
+    expect(m.features.find((f) => f.id === 'monk.unarmored-movement')!.description).not.toMatch(/Выбранное оружие/);
+  });
+  it.skipIf(!existsSync(fx('91-fighter.html')))('боевой стиль — выбор одного; приёмы мастера боевых искусств растут с уровнем', () => {
+    const f = cls('91-fighter');
+    const style = f.features.find((x) => x.id === 'fighter.fighting-style')!;
+    expect(style.choose).toBe(1);
+    expect(style.parts!.map((p) => p.name)).toContain('Оборона');
+    const bm = f.subclasses.find((s) => s.name === 'Мастер боевых искусств')!.features[0]!;
+    expect(bm.choose).toEqual({ 3: 3, 7: 5, 10: 7, 15: 9 });
+    expect(bm.parts!.length).toBeGreaterThan(10);
+  });
+  it.skipIf(!existsSync(fx('99-rogue.html')))('компетентность плута: 2 навыка, на 6-м ещё 2, можно воровские инструменты', () => {
+    const r = cls('99-rogue');
+    expect(r.features.find((x) => x.id === 'rogue.expertise')!.effects).toContainEqual({ type: 'expertise_choice', id: 'rogue.expertise.expertise', pick: { 1: 2, 6: 4 }, tools: ['tools.thieves'] });
+  });
+  it.skipIf(!existsSync(fx('104-warlock.html')))('воззвания колдуна — из общего списка, число по колонке таблицы, требования уровня', () => {
+    const w = cls('104-warlock');
+    const inv = w.features.find((x) => x.id === 'warlock.eldritch-invocations')!;
+    expect(inv.choose).toMatchObject({ 2: 2, 5: 3, 18: 8 });
+    expect(inv.parts!.find((p) => p.name === 'Восходящий шаг')!.minLevel).toBe(9);
+    expect(w.features.find((x) => x.id === 'warlock.pact-boon')!.choose).toBe(1);
+  });
+  it.skipIf(!existsSync(fx('281-bugbear.html')))('языки расы: известные и «ещё один на выбор»', () => {
+    const r = parseRace(readFileSync(fx('281-bugbear.html'), 'utf8'), 'https://dnd.su/multiverse/race/281-bugbear/');
+    const lang = r.features.flatMap((f) => f.effects ?? []).filter((e) => e.type === 'proficiency' && e.kind === 'language' || e.type === 'choice' && e.kind === 'language');
+    expect(lang).toEqual([{ type: 'proficiency', kind: 'language', ids: ['Общий'] }, expect.objectContaining({ type: 'choice', kind: 'language', pick: 1, of: 'any' })]);
+  });
+});

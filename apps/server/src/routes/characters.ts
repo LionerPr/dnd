@@ -7,7 +7,7 @@ import { requireUser } from '../auth.js';
 import { CommandSchema } from '../commands.js';
 import { forbidden, HttpError } from '../errors.js';
 import { contentIndexFor, getCharacter, saveCharacterData, type CharacterRow } from '../repo.js';
-import { broadcastCharacter, characterAccess, characterView, emitEvent, freshCharacter, runCharacterCommand } from '../service.js';
+import { broadcastCharacter, characterAccess, characterView, emitEvent, freshCharacter, namesFor, runCharacterCommand } from '../service.js';
 
 /** Лист целиком, кроме состояния: состояние меняется только командами (чтобы мастер и игрок не затирали друг друга). */
 const CharacterBody = z.object({
@@ -81,6 +81,18 @@ export function characterRoutes(api: Api, deps: AppDeps) {
       return { ...row, data: incoming, version };
     });
     return broadcastCharacter(deps, updated);
+  });
+
+  /** Как будет выглядеть лист с изменениями, без сохранения: окно повышения уровня показывает новое до подтверждения */
+  api.post('/characters/:id/preview', async (req) => {
+    const user = requireUser(req);
+    const body = CharacterBody.parse(req.body);
+    const row = await getCharacter(db, (req.params as { id: string }).id);
+    const access = await characterAccess(db, user, row);
+    if (!access.canEdit) throw forbidden('Это не ваш персонаж');
+    const draft = { ...(body.data as unknown as Character), id: row.id, state: row.data.state };
+    const index = await contentIndexFor(db, [draft]);
+    return { sheet: computeSheet(draft, index), names: namesFor(draft, index) };
   });
 
   api.post('/characters/:id/command', async (req) => {

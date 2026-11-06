@@ -66,7 +66,7 @@ button.vital:hover { border-color: var(--line-strong); }
 
 .sheet-body {
   display: grid;
-  grid-template-columns: 300px minmax(0, 1fr);
+  grid-template-columns: minmax(560px, 620px) minmax(0, 1fr);
   gap: 18px;
   align-items: start;
 }
@@ -214,6 +214,9 @@ button.vital:hover { border-color: var(--line-strong); }
 .ability-edit .cell .input { height: 32px; margin: 6px 0; }
 .pending { border: 1px solid color-mix(in srgb, var(--accent) 40%, var(--line)); background: var(--accent-soft); border-radius: var(--r); padding: 10px 12px; }
 
+@media (max-width: 1180px) {
+  .sheet-body { grid-template-columns: minmax(0, 1fr); }
+}
 @media (max-width: 1100px) {
   .vitals { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .vitals .hp { grid-column: 1 / -1; }
@@ -282,3 +285,82 @@ button.vital:hover { border-color: var(--line-strong); }
 .accent-text { color: var(--accent); }
 .member h4 a { color: inherit; text-decoration: none; }
 .member h4 a:hover { text-decoration: underline; text-underline-offset: 3px; }
+
+/* Части умений: техники ци, выбранный боевой стиль */
+.feature-parts { display: grid; gap: 8px; margin-top: 10px; }
+.feature-part { border-left: 2px solid var(--accent-soft); padding: 2px 0 2px 12px; white-space: pre-line; }
+.feature-part b { display: block; color: var(--ink); margin-bottom: 2px; }
+.accent-text { color: var(--accent); font-weight: 600; }
+
+/* Выборы */
+.pending-title { margin-bottom: 8px; }
+.part-options { display: grid; gap: 6px; }
+.part-option { border: 1px solid var(--line); border-radius: var(--r); background: var(--surface); }
+.part-option summary { list-style: none; cursor: pointer; display: flex; align-items: center; gap: 8px; padding: 7px 10px; }
+.part-option summary::-webkit-details-marker { display: none; }
+.part-option summary .t { font-weight: 600; flex: 1; }
+.part-option .body { padding: 0 10px 10px; font-size: 13.5px; line-height: 1.55; white-space: pre-line; color: var(--ink-2); }
+.tag { font-size: 11px; color: var(--muted); border: 1px solid var(--line); border-radius: 999px; padding: 0 7px; }
+.chip.dim { color: var(--muted); }
+
+/* Характеристики с навыками под каждой — всё с одного взгляда */
+.ab-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
+.ab-col { display: flex; flex-direction: column; gap: 16px; }
+.ab-block header { display: flex; align-items: baseline; gap: 10px; margin-bottom: 6px; }
+.ab-block h3 { font-family: var(--font-display); font-size: 22px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; margin: 0; }
+.ab-block header i { flex: 1; height: 1px; background: var(--line); align-self: center; }
+.ab-block .score { font-size: 20px; font-weight: 700; font-variant-numeric: lining-nums tabular-nums; }
+.ab-rolls { display: grid; grid-template-columns: 1fr 1.25fr; gap: 6px; margin-bottom: 4px; }
+.ab-roll, .ab-skill {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  font: inherit; color: inherit; cursor: pointer; text-align: left; width: 100%; overflow: hidden;
+  border: 1px solid var(--line); background: var(--surface); border-radius: var(--r);
+}
+.ab-roll { padding: 0 0 0 10px; height: 36px; font-size: 11.5px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; }
+.ab-roll span { display: inline-flex; align-items: center; gap: 6px; }
+.ab-roll b, .ab-skill b {
+  min-width: 46px; height: 100%; display: grid; place-items: center;
+  border-left: 1px solid var(--line); font-size: 16px; font-weight: 700;
+  font-variant-numeric: lining-nums tabular-nums;
+}
+.ab-skill { display: grid; grid-template-columns: 12px 1fr auto; padding: 0 0 0 10px; height: 32px; margin-top: 4px; font-size: 14px; border-color: transparent; background: var(--surface-2); }
+.ab-skill b { font-size: 15px; border-left-color: var(--line); }
+.ab-skill.on { background: var(--surface); border-color: var(--line); font-weight: 600; }
+.ab-roll:hover, .ab-skill:hover { border-color: var(--line-strong); }
+.ab-extra { display: flex; flex-direction: column; gap: 6px; border-top: 1px solid var(--line); padding-top: 12px; }
+.ab-extra .caps { margin-top: 6px; }
+.senses { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 13.5px; }
+.senses b { font-variant-numeric: tabular-nums; }
+.chip.off { color: var(--muted); opacity: 0.55; }
+@media (max-width: 560px) {
+  .ab-grid { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* Повышение уровня */
+.lu-summary { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 6px 18px; padding: 12px 14px; border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--surface-2); }
+.lu-diff { display: flex; justify-content: space-between; align-items: center; gap: 10px; font-size: 14px; }
+.lu-diff > span:last-child { display: inline-flex; align-items: center; gap: 6px; font-variant-numeric: tabular-nums; }
+.lu-section h4 { font-family: var(--font-display); font-size: 20px; margin: 0 0 8px; }
+.part-option.picked { border-color: var(--accent); background: var(--accent-soft); }
+.level-badge { display: inline-flex; align-items: center; gap: 10px; margin-top: 8px; font-size: 13px; }
+.level-badge b { background: var(--accent); color: var(--accent-ink); border-radius: 999px; padding: 1px 10px; font-weight: 700; letter-spacing: 0.04em; }
+.xp-bar { width: 180px; height: 6px; background: var(--surface-2); border: 1px solid var(--line); border-radius: 3px; overflow: hidden; }
+.xp-bar i { display: block; height: 100%; background: var(--accent); }
+
+/* Пошаговое создание */
+.wizard-steps { list-style: none; display: flex; flex-wrap: wrap; gap: 6px; padding: 0; margin: 0 0 20px; }
+.wizard-steps button { display: inline-flex; align-items: center; gap: 8px; border: 1px solid var(--line); background: var(--surface); border-radius: 999px; padding: 6px 14px 6px 6px; font: inherit; color: var(--muted); cursor: pointer; }
+.wizard-steps .n { width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; background: var(--surface-2); font-size: 12px; font-weight: 700; }
+.wizard-steps li.on button { color: var(--ink); border-color: var(--accent); }
+.wizard-steps li.on .n { background: var(--accent); color: var(--accent-ink); }
+.wizard-steps li.done .n { background: var(--good-soft); color: var(--good); }
+.wizard-split { display: grid; grid-template-columns: minmax(240px, 320px) minmax(0, 1fr); gap: 18px; align-items: start; }
+.pick-list { display: flex; flex-direction: column; gap: 2px; max-height: 62vh; overflow: auto; border: 1px solid var(--line); border-radius: var(--r-lg); padding: 4px; background: var(--surface); }
+.pick-item { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; padding: 8px 10px; border: 0; background: none; border-radius: var(--r); font: inherit; color: inherit; text-align: left; cursor: pointer; }
+.pick-item:hover { background: var(--surface-2); }
+.pick-item.on { background: var(--accent-soft); color: var(--ink); font-weight: 600; }
+.search-input { position: relative; display: block; }
+.search-input svg { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: var(--muted); }
+.search-input .input { padding-left: 32px; }
+.pending.good-soft { background: var(--good-soft); border-color: color-mix(in srgb, var(--good) 40%, var(--line)); }
+@media (max-width: 760px) { .wizard-split { grid-template-columns: minmax(0, 1fr); } .pick-list { max-height: 40vh; } }

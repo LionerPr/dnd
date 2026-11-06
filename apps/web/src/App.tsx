@@ -8,6 +8,7 @@ import { applyTheme, getTheme, type Theme } from './lib/theme';
 import { AuthPage } from './pages/Auth';
 import { CampaignPage } from './pages/Campaign';
 import { CharacterPage } from './pages/Character';
+import { CharacterCreatePage } from './pages/CharacterCreate';
 import { ContentPage } from './pages/ContentEditor';
 import { HomePage } from './pages/Home';
 import { LibraryPage } from './pages/Library';
@@ -60,6 +61,7 @@ function Shell() {
       <Routes>
         <Route path="/" element={<HomePage />} />
         <Route path="/characters/:id" element={<CharacterPage />} />
+        <Route path="/characters/:id/create" element={<CharacterCreatePage />} />
         <Route path="/campaigns/:id" element={<CampaignPage />} />
         <Route path="/library" element={<LibraryPage />} />
         <Route path="/library/:id" element={<ContentPage />} />

@@ -65,3 +65,18 @@ export function bookShort(book?: string) {
   const caps = book.replace(/[’']s\b/g, '').match(/\b[A-Z0-9]/g)?.join('');
   return caps && caps.length >= 2 && caps.length <= 6 ? caps : book;
 }
+
+const PROF_NAMES: Record<string, string> = {
+  light: 'лёгкие доспехи', medium: 'средние доспехи', heavy: 'тяжёлые доспехи', shield: 'щиты',
+  simple: 'простое оружие', martial: 'воинское оружие',
+  'tools.blacksmith': 'инструменты кузнеца', 'tools.smith': 'инструменты кузнеца', 'tools.brewer': 'инструменты пивовара', 'tools.mason': 'инструменты каменщика',
+  'tools.thieves': 'воровские инструменты', 'tools.thief': 'воровские инструменты', 'tools.herbalism': 'набор травника',
+  'tools.disguise': 'набор для грима', 'tools.forgery': 'набор для фальсификации', 'tools.poisoner': 'инструменты отравителя',
+  'tools.navigator': 'инструменты навигатора', 'tools.tinker': 'инструменты ремонтника', 'tools.carpenter': 'инструменты плотника',
+  'tools.cook': 'инструменты повара', 'tools.jeweler': 'инструменты ювелира', 'tools.leatherworker': 'инструменты кожевника',
+  'tools.alchemist': 'инструменты алхимика', 'tools.calligrapher': 'инструменты каллиграфа', 'tools.cartographer': 'инструменты картографа',
+  'tools.cobbler': 'инструменты сапожника', 'tools.glassblower': 'инструменты стеклодува', 'tools.painter': 'инструменты художника',
+  'tools.potter': 'инструменты гончара', 'tools.weaver': 'инструменты ткача', 'tools.woodcarver': 'инструменты резчика по дереву',
+  'tools.musical': 'музыкальный инструмент', 'tools.gaming': 'игровой набор', 'tools.vehicles': 'транспорт',
+};
+export const profName = (k: string) => PROF_NAMES[k] ?? k.replace(/^tools\./, '');

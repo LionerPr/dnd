@@ -1,5 +1,5 @@
-import type { Ability, CharacterClass, ClassLevel, Effect, Feature, Race, Skill, Spellcasting, Subclass, Subrace } from '@dnd/rules-engine';
-import { SKILLS } from '@dnd/rules-engine';
+import type { Ability, CharacterClass, ClassLevel, Effect, Feature, FeaturePart, LevelCount, Race, Skill, Spellcasting, Subclass, Subrace } from '@dnd/rules-engine';
+import { LANGUAGES, SKILLS } from '@dnd/rules-engine';
 import * as cheerio from 'cheerio/slim';
 import type { AnyNode } from 'domhandler';
 
@@ -198,7 +198,25 @@ export function effectsFromFeature(name: string, body: string, featureId: string
     }
   }
   if (/максимум\s+ваших\s+хитов\s+увеличивается\s+на\s+1[^.]*кажд/i.test(body)) effects.push({ type: 'hp_per_level', value: 1 });
+  if (/^язык/.test(n)) effects.push(...languageEffects(body, featureId));
+  // «Вы владеете лёгкими и средними доспехами»
+  const armorPhrase = body.match(/владе\S*\s+([^.]*?)доспех/i)?.[1];
+  if (armorPhrase !== undefined) {
+    const ids = ARMOR_WORDS.filter(([re]) => re.test(armorPhrase)).map(([, k]) => k).filter((k) => k !== 'shield');
+    if (ids.length) effects.push({ type: 'proficiency', kind: 'armor', ids });
+  }
   return effects;
+}
+
+/** «Вы можете говорить, читать и писать на Общем и Дварфийском языках», «…и ещё одном языке на ваш выбор» */
+function languageEffects(body: string, featureId: string): Effect[] {
+  const first = body.split(/(?<=\.)\s+/)[0] ?? body;
+  const ids = [...new Set(first.split(/[^А-ЯЁа-яё]+/).filter((w) => /^[А-ЯЁ]/.test(w)).map((w) => LANGUAGES.find((l) => l.stem.test(w))?.name).filter((x): x is string => !!x))];
+  const out: Effect[] = [];
+  if (ids.length) out.push({ type: 'proficiency', kind: 'language', ids });
+  const extra = first.match(/(?:ещё|еще)\s+(одн|дв)\S*\s+(?:\S+\s+)?язык|(одн|дв)\S*\s+(?:другим|другими|другом|дополнительн\S*)?\s*язык\S*\s+(?:на|по)\s+ваш/i);
+  if (extra) out.push({ type: 'choice', id: `${featureId}.languages`, kind: 'language', pick: /дв/i.test(extra[1] ?? extra[2] ?? '') ? 2 : 1, of: 'any' });
+  return out;
 }
 
 // ---------- Расы ----------
@@ -382,6 +400,128 @@ function levelFromEm(t: string): number | undefined {
   return m ? Number(m[1]) : undefined;
 }
 
+// ---------- Умения классов: части и выборы ----------
+
+const COUNT_RE = '(один|одно|одну|два|две|три|четыре)';
+
+/**
+ * Тело умения → вступление и части. Части — подзаголовки h4 (техники ци, варианты боевого стиля, метамагия).
+ * Опциональные варианты (Котёл Таши) лежат в div.TCE-feature-on — разворачиваем их.
+ */
+function splitParts($: $, nodes: cheerio.Cheerio<AnyNode>): { intro: string; parts: FeaturePart[] } {
+  const flat: { el: AnyNode; optional: boolean }[] = [];
+  nodes.each((_, el) => {
+    const $el = $(el);
+    if ($el.is('div') && $el.find('h4').length) $el.children().each((__, ch) => void flat.push({ el: ch, optional: $el.hasClass('TCE-feature-on') }));
+    else flat.push({ el, optional: false });
+  });
+  const intro: AnyNode[] = [];
+  const parts: { name: string; nodes: AnyNode[]; optional: boolean }[] = [];
+  for (const { el, optional } of flat) {
+    const $el = $(el);
+    if ($el.is('h4')) parts.push({ name: title($el.text()), nodes: [], optional });
+    else if (parts.length) parts[parts.length - 1]!.nodes.push(el);
+    else intro.push(el);
+  }
+  return {
+    intro: blockText($, $(intro)),
+    parts: parts.map((x) => {
+      const body = $(x.nodes).filter((_, el) => !/^(опциональный|optional)/i.test(text($(el).text())));
+      return { name: x.name, description: blockText($, body), ...(x.optional || $(x.nodes).filter((_, el) => /опциональный вариант/i.test(text($(el).text()))).length ? { optional: true } : {}) };
+    }),
+  };
+}
+
+/** Список вариантов в отдельном разделе страницы (воззвания колдуна): ссылка из умения → элементы с data-level */
+function linkedParts($: $, nodes: cheerio.Cheerio<AnyNode>): FeaturePart[] {
+  for (const a of nodes.find('a[href^="#"]').toArray()) {
+    const id = $(a).attr('href')!.slice(1);
+    const anchor = $(`[id="${id}"]`).first();
+    const wrapper = anchor.closest('h2').next('.hide-wrapper');
+    const items = wrapper.find('[data-sort="element"]');
+    if (items.length < 3) {
+      // Боевые приёмы: абзацы «<strong>Название.</strong> описание»
+      const paras = wrapper.children('p').filter((_, el) => $(el).children('strong').length > 0 && text($(el).text()).startsWith(text($(el).children('strong').first().text())));
+      if (paras.length < 3) continue;
+      return paras.toArray().map((el) => {
+        const name = text($(el).children('strong').first().text()).replace(/[.:]$/, '');
+        return { name, description: text($(el).text()).slice(name.length).replace(/^[.:]?\s*/, '') };
+      });
+    }
+    return items.toArray().map((el) => {
+      const $el = $(el);
+      const h = $el.find('h3, h4').first();
+      const minLevel = Number($el.attr('data-level')) || undefined;
+      return { name: title(h.text()), description: blockText($, h.nextAll()), ...(minLevel ? { minLevel } : {}), ...($el.attr('data-source') === 'TCE' ? { optional: true } : {}) };
+    });
+  }
+  return [];
+}
+
+const WORD_COUNT: Record<string, number> = { один: 1, одно: 1, одну: 1, два: 2, две: 2, три: 3, четыре: 4 };
+
+/** «Выберите один из следующих вариантов», «Вы выбираете два варианта… На 10-м и 17-м уровне вы получаете ещё по одному» */
+function chooseCount(intro: string, level: number): LevelCount | undefined {
+  const m = intro.match(new RegExp(`(?:выберите|выбираете|получаете|изучаете)\\s+${COUNT_RE}\\s+(?:из\\s+следующих|вариант|умени[йея]\\s+на\\s+выбор|на\\s+выбор|манёвр|маневр|при[её]м)`, 'i'));
+  if (!m) return undefined;
+  const base = WORD_COUNT[m[1]!.toLowerCase()] ?? 1;
+  const out: Partial<Record<number, number>> = { [level]: base };
+  const more = intro.match(/На\s+((?:\d+-м(?:,\s*|\s+и\s+)?)+)\s*уровн\S*\s+вы\s+(?:получаете|изучаете)\s+(?:ещё|еще)\s+по\s+(?:одному|одной)/i);
+  let n = base;
+  for (const l of [...(more?.[1] ?? '').matchAll(/(\d+)-м/g)].map((x) => Number(x[1])).sort((a, b) => a - b)) out[l] = ++n;
+  // «Вы изучаете два дополнительных приёма при достижении 7-го, 10-го и 15-го уровней»
+  const extra = intro.match(new RegExp(`${COUNT_RE}\\s+дополнительн\\S+\\s+\\S+\\s+при\\s+достижении\\s+((?:\\d+-го(?:,\\s*|\\s+и\\s+)?)+)`, 'i'));
+  if (extra) {
+    const step = WORD_COUNT[extra[1]!.toLowerCase()] ?? 1;
+    for (const l of [...extra[2]!.matchAll(/(\d+)-го/g)].map((x) => Number(x[1])).sort((a, b) => a - b)) out[l] = n += step;
+  }
+  return n === base ? base : out;
+}
+
+/** Колонка таблицы класса, похожая на название умения («Таинственные воззвания» → «Известные воззвания»), как LevelCount */
+function columnCount(levels: ClassLevel[], name: string): LevelCount | undefined {
+  const stems = name.toLowerCase().split(/[^а-яё]+/).filter((w) => w.length >= 5).map((w) => w.slice(0, 5));
+  const key = Object.keys(levels[0]?.columns ?? {}).find((k) => stems.some((st) => k.toLowerCase().includes(st)));
+  if (!key) return undefined;
+  const out: Partial<Record<number, number>> = {};
+  let prev = 0;
+  for (const l of levels) {
+    const v = Number(l.columns?.[key]);
+    if (v && v !== prev) out[l.level] = prev = v;
+  }
+  return Object.keys(out).length ? out : undefined;
+}
+
+/** Умение класса или подкласса из заголовка h3 и узлов после него. */
+function classFeature($: $, id: string, name: string, nodes: cheerio.Cheerio<AnyNode>, level: number | undefined, levels: ClassLevel[]): Feature {
+  const body = nodes.filter((i, el) => !(i === 0 && levelFromEm(text($(el).find('em').first().text())) !== undefined));
+  let { intro, parts } = splitParts($, body);
+  // Один подзаголовок — это не варианты, а просто раздел текста
+  if (parts.length < 2) ({ intro, parts } = { intro: blockText($, body), parts: [] });
+  let choose: LevelCount | undefined;
+  if (parts.length >= 2) choose = chooseCount(intro, level ?? 1);
+  if (!parts.length) {
+    const linked = linkedParts($, body);
+    const count = linked.length ? columnCount(levels, name) ?? chooseCount(intro, level ?? 1) : undefined;
+    // Ссылка на список без «выберите N» — просто упоминание (как «Универсальность воина»), список не прикладываем
+    if (count !== undefined) {
+      parts = linked;
+      choose = count;
+    }
+  }
+  const f: Feature = { id, name, description: parts.length ? intro : blockText($, body), level };
+  if (parts.length) f.parts = parts;
+  if (choose !== undefined) f.choose = choose;
+  // Компетентность: «Выберите два ваших владения… На 6-м уровне вы можете выбрать ещё два»
+  if (/^(компетентность|экспертиза)$/i.test(name)) {
+    const lvl = level ?? 1;
+    const later = intro.match(/На\s+(\d+)-м\s+уровне\s+вы\s+можете\s+выбрать\s+е[щш]ё?е?\s+(?:два|две|2)/i);
+    const tools = body.find('[tooltip-for^="tools."]').length ? ['tools.thieves'] : undefined;
+    f.effects = [{ type: 'expertise_choice', id: `${id}.expertise`, pick: later ? { [lvl]: 2, [Number(later[1])]: 4 } : 2, ...(tools ? { tools } : {}) }];
+  }
+  return f;
+}
+
 export function parseClass(html: string, url: string): CharacterClass {
   const $ = cheerio.load(html);
   const { name, en, book } = cardTitle($);
@@ -407,7 +547,8 @@ export function parseClass(html: string, url: string): CharacterClass {
     .filter((w) => w && w !== 'нет')
     .map((w) => (/простое/.test(w) ? 'simple' : /воинское/.test(w) ? 'martial' : w));
   const toolsText = field('Инструменты').value;
-  const tools = /^нет$/i.test(toolsText) ? [] : toolsText.split(/,\s*/).filter(Boolean);
+  // «Выберите один вид инструмента ремесленников…» — выбор, а не список: его делает игрок по тексту класса
+  const tools = /^нет$/i.test(toolsText) || /выберите|на\s+ваш\s+выбор/i.test(toolsText) ? [] : toolsText.split(/,\s*/).filter(Boolean);
   const skillsField = field('Навыки');
   const skillKeys = skillsField.$p.find('[tooltip-for^="skill."]').map((_, el) => $(el).attr('tooltip-for')!.slice(6)).get().filter((s) => s in SKILLS) as Skill[];
   const countWord = skillsField.value.match(/Выберите\s+(\S+)/i)?.[1]?.toLowerCase() ?? 'два';
@@ -440,12 +581,14 @@ export function parseClass(html: string, url: string): CharacterClass {
   $('h3 span[id^="feature."]').each((_, span) => {
     const fid = $(span).attr('id')!.slice('feature.'.length);
     const h3 = $(span).closest('h3');
-    const bodyNodes = h3.nextUntil('h3, h2');
+    // Следующее умение может лежать в обёртке опциональных (div.TCE-feature-on) — на ней тоже останавливаемся
+    const bodyNodes = h3.nextUntil('h3, h2, div:has(> h3)');
     const firstEm = text(bodyNodes.first().find('em').first().text());
     const level = levelFromEm(firstEm) ?? levels.find((l) => l.features.includes(fid))?.level;
-    const description = blockText($, bodyNodes.filter((i) => !(i === 0 && levelFromEm(firstEm) !== undefined)));
-    const effects = rules.effects?.[fid] ?? [];
-    features.push({ id: `${slug}.${fid}`, name: title(h3.text()), description, level, effects, optional: h3.closest('.TCE-feature-on').length > 0 || undefined });
+    const f = classFeature($, `${slug}.${fid}`, title(h3.text()), bodyNodes, level, levels);
+    f.effects = [...(rules.effects?.[fid] ?? []), ...(f.effects ?? [])];
+    if (h3.closest('.TCE-feature-on').length) f.optional = true;
+    features.push(f);
   });
   // Самодельные классы: умение — заголовок h3, за которым «N-й уровень, умение …»; h3 без уровня — часть описания
   const loose = features.length === 0;
@@ -488,12 +631,7 @@ export function parseClass(html: string, url: string): CharacterClass {
       const nodes = h3.nextUntil('h3, h2');
       const em = text(nodes.first().find('em').first().text());
       const level = levelFromEm(em);
-      subFeatures.push({
-        id: `${slug}.${sid}.${i}`,
-        name: title(h3.text()),
-        description: blockText($, nodes.filter((j) => !(j === 0 && level !== undefined))),
-        level,
-      });
+      subFeatures.push(classFeature($, `${slug}.${sid}.${i}`, title(h3.text()), nodes, level, levels));
     });
     const intro = blockText($, $(wrapper.children('h3').first().prevAll('p').toArray().reverse()));
     subclasses.push({ id: sid, name: text(span.children.length ? $(span).text() : h2.text()), description: intro || undefined, features: subFeatures, spellcasting: SUBCLASS_CASTING[sid] });

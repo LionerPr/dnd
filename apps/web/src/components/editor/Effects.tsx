@@ -17,6 +17,7 @@ export const EFFECT_LABELS: Record<Effect['type'], string> = {
   proficiency: 'Владение',
   choice: 'Владение на выбор',
   expertise: 'Компетентность',
+  expertise_choice: 'Компетентность на выбор',
   hp_per_level: 'Хиты за уровень',
   ac_bonus: 'Бонус к КД',
   ac_formula: 'КД без доспехов',
@@ -37,6 +38,7 @@ function blank(type: Effect['type']): Effect {
     case 'proficiency': return { type, kind: 'skill', ids: [] };
     case 'choice': return { type, id: uid(), kind: 'skill', pick: 1, of: 'any' };
     case 'expertise': return { type, skills: [] };
+    case 'expertise_choice': return { type, id: uid(), pick: 2 };
     case 'hp_per_level': return { type, value: 1 };
     case 'ac_bonus': return { type, value: 1 };
     case 'ac_formula': return { type, base: 10, abilities: ['dex'], allowShield: true };
@@ -152,6 +154,8 @@ function EffectBody({ e, set }: { e: Effect; set: (e: Effect) => void }): ReactN
       );
     case 'expertise':
       return <ChipSet options={skillNames} value={e.skills} onChange={(skills) => set({ ...e, skills: skills as typeof e.skills })} />;
+    case 'expertise_choice':
+      return <Num label="Сколько навыков" value={typeof e.pick === 'number' ? e.pick : 2} onChange={(pick) => set({ ...e, pick })} />;
     case 'hp_per_level':
     case 'ac_bonus':
     case 'initiative_bonus':

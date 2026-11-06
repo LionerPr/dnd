@@ -1,18 +1,47 @@
+import type { FeaturePart } from '@dnd/rules-engine';
 import type { CharacterView } from '../../api/client';
+import { profName } from '../../lib/format';
 import { Empty } from '../ui';
 
-export function FeatureList({ features }: { features: { id: string; name: string; description: string; level?: number; origin?: string }[] }) {
+type FeatureLike = { id: string; name: string; description: string; level?: number; origin?: string; parts?: FeaturePart[]; choose?: unknown; chosenParts?: string[] };
+
+/** Части умения: у умения с выбором — только выбранные, иначе все (техники ци и т.п.) */
+export function visibleParts(f: FeatureLike) {
+  if (!f.parts?.length) return [];
+  return f.choose !== undefined ? f.parts.filter((p) => f.chosenParts?.includes(p.name)) : f.parts;
+}
+
+export function FeatureList({ features, open }: { features: FeatureLike[]; open?: boolean }) {
   return (
     <div>
-      {features.map((f) => (
-        <details key={f.id} className="feature">
-          <summary>
-            <span className="t">{f.name}</span>
-            {f.level !== undefined && <span className="small muted">{f.level} ур.</span>}
-          </summary>
-          <div className="body">{f.description || <span className="muted">Без описания</span>}</div>
-        </details>
-      ))}
+      {features.map((f) => {
+        const parts = visibleParts(f);
+        const chosen = f.choose !== undefined && parts.length ? `: ${parts.map((p) => p.name).join(', ')}` : '';
+        return (
+          <details key={f.id} className="feature" open={open}>
+            <summary>
+              <span className="t">
+                {f.name}
+                {chosen && <span className="accent-text">{chosen}</span>}
+              </span>
+              {f.level !== undefined && <span className="small muted">{f.level} ур.</span>}
+            </summary>
+            <div className="body">
+              {f.description || (!parts.length && <span className="muted">Без описания</span>)}
+              {parts.length > 0 && (
+                <div className="feature-parts">
+                  {parts.map((p) => (
+                    <div key={p.name} className="feature-part">
+                      <b>{p.name}</b>
+                      <div>{p.description}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </details>
+        );
+      })}
     </div>
   );
 }
@@ -25,7 +54,7 @@ export function FeaturesTab({ view }: { view: CharacterView }) {
   }
   if (!groups.size) return <Empty title="Умений пока нет">Выберите расу и класс в конструкторе.</Empty>;
   const profs = view.sheet.proficiencies;
-  const list = (xs: string[]) => xs.map((x) => PROF_NAMES[x] ?? x.replace(/^tools\./, '')).join(', ');
+  const list = (xs: string[]) => xs.map(profName).join(', ');
   return (
     <div className="stack-lg">
       {[...groups].map(([origin, features]) => (
@@ -47,10 +76,3 @@ export function FeaturesTab({ view }: { view: CharacterView }) {
     </div>
   );
 }
-
-const PROF_NAMES: Record<string, string> = {
-  light: 'лёгкие доспехи', medium: 'средние доспехи', heavy: 'тяжёлые доспехи', shield: 'щиты',
-  simple: 'простое оружие', martial: 'воинское оружие',
-  'tools.blacksmith': 'инструменты кузнеца', 'tools.brewer': 'инструменты пивовара', 'tools.mason': 'инструменты каменщика',
-  'tools.thieves': 'воровские инструменты', 'tools.herbalism': 'набор травника',
-};

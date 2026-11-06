@@ -103,3 +103,8 @@ export function useContentList(kind: string, extra: Record<string, string | numb
   for (const [k, v] of Object.entries(extra)) if (v !== undefined && v !== '') params.set(k, String(v));
   return useQuery({ queryKey: ['content', kind, extra], queryFn: () => api<{ items: ContentRow[] }>(`/content?${params}`) });
 }
+
+/** Полные данные расы, класса и т.п. из библиотеки */
+export function useContentItem<T>(id: string | undefined) {
+  return useQuery({ queryKey: ['content-item', id], queryFn: () => api<{ item: ContentRow }>(`/content/${id}`).then((r) => r.item.data as T), enabled: !!id });
+}

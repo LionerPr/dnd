@@ -259,3 +259,41 @@ describe('таблица класса', () => {
     expect(s.speed.walk).toBe(40);
   });
 });
+
+describe('выборы, которые открываются с уровнем', () => {
+  const rogue: CharacterClass = {
+    kind: 'class', id: 'rogue', name: 'Плут', source: 'srd', hitDie: 8, saves: ['dex', 'int'],
+    armor: ['light'], weapons: ['simple'], tools: ['tools.thieves'], skillChoices: { pick: 2, from: ['stealth', 'acrobatics', 'perception'] },
+    features: [
+      { id: 'rogue.expertise', name: 'Компетентность', description: '', level: 1, effects: [{ type: 'expertise_choice', id: 'rogue.expertise.expertise', pick: { 1: 2, 6: 4 }, tools: ['tools.thieves'] }] },
+      { id: 'rogue.style', name: 'Боевой стиль', description: '', level: 2, choose: { 2: 1, 5: 2 },
+        parts: [{ name: 'Оборона', description: '+1 КД' }, { name: 'Стрельба', description: '+2' }, { name: 'Поздний', description: '', minLevel: 9 }] },
+    ],
+    levels: [], subclassLevel: 3, subclasses: [],
+  };
+  const idx: ContentIndex = { ...content, classes: new Map([[rogue.id, rogue]]) };
+  const base = (level: number): Character => ({ ...torin(), raceId: undefined, subraceId: undefined, classes: [{ classId: 'rogue', level }], choices: { 'class.rogue.skills': ['stealth', 'perception'] } });
+
+  it('компетентность: из навыков, которыми владеет, и растёт с уровнем', () => {
+    const s1 = computeSheet(base(1), idx);
+    const p = s1.pendingChoices.find((x) => x.kind === 'expertise')!;
+    expect(p.pick).toBe(2);
+    expect([...(p.of as string[])].sort()).toEqual(['perception', 'stealth', 'tools.thieves']);
+    const c = base(6);
+    c.choices['rogue.expertise.expertise'] = ['stealth', 'tools.thieves'];
+    const s6 = computeSheet(c, idx);
+    expect(s6.skills.find((x) => x.key === 'stealth')!.expertise).toBe(true);
+    expect(s6.pendingChoices.find((x) => x.kind === 'expertise')!.pick).toBe(2);
+  });
+
+  it('части умения: выбор растёт с уровнем, варианты с порогом уровня скрыты', () => {
+    const c = base(2);
+    expect(computeSheet(c, idx).pendingChoices.find((x) => x.kind === 'feature')).toMatchObject({ id: 'part.rogue.style', pick: 1, of: ['Оборона', 'Стрельба'], featureId: 'rogue.style' });
+    c.choices['part.rogue.style'] = ['Оборона'];
+    const s = computeSheet(c, idx);
+    expect(s.pendingChoices.find((x) => x.kind === 'feature')).toBeUndefined();
+    expect(s.features.find((f) => f.id === 'rogue.style')!.chosenParts).toEqual(['Оборона']);
+    c.classes[0]!.level = 5;
+    expect(computeSheet(c, idx).pendingChoices.find((x) => x.kind === 'feature')!.pick).toBe(1);
+  });
+});
