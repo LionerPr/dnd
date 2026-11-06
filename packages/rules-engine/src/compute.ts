@@ -18,9 +18,11 @@ import type {
   Item,
   LevelCount,
   ProficiencyKind,
+  Edition,
   Spellcasting,
 } from './types.js';
 import { backgroundById } from './backgrounds.js';
+import { tryFormula } from './formula.js';
 
 /** Откуда умение или владение: раса, класс, предыстория, черта, своё, предмет */
 export type FeatureFrom = 'race' | 'class' | 'background' | 'feat' | 'custom' | 'item';
@@ -87,7 +89,11 @@ export function collectFeatures(c: Character, content: ContentIndex): SourcedFea
     if (bg.tools?.length) effects.push({ type: 'proficiency', kind: 'tool', ids: bg.tools });
     if (bg.toolChoice) effects.push({ type: 'choice', id: 'bg.tools', kind: 'tool', pick: bg.toolChoice.pick, of: bg.toolChoice.of });
     if (bg.languages) effects.push({ type: 'choice', id: 'bg.languages', kind: 'language', pick: bg.languages, of: 'any' });
+    if (bg.abilityPool) effects.push({ type: 'ability_choice', id: 'bg.asi', pick: bg.abilityPool.total, value: 1, from: bg.abilityPool.options, repeat: bg.abilityPool.max });
     out.push({ id: `bg.${bg.id}`, name: bg.feature.name, description: bg.feature.description, effects, origin: bg.name, from: 'background', sourceLevel: lvl });
+    // 2024: предыстория даёт черту происхождения
+    const feat = bg.featId ? content.feats.get(bg.featId) : undefined;
+    if (feat && !c.featIds.includes(bg.featId!)) out.push({ ...feat, origin: bg.name, from: 'background', sourceLevel: lvl });
   }
 
   for (const id of c.featIds) {
@@ -230,7 +236,8 @@ export interface Sheet {
   /** Выборы, которые игрок ещё не сделал: id эффекта → сколько нужно выбрать */
   /** asi: можно вместо характеристик взять черту (значение выбора «feat:<id>:<название>») */
   /** kind feature — выбрать части умения featureId (боевой стиль); expertise — навыки для компетентности */
-  pendingChoices: { id: string; kind: string; pick: number; of: string[] | 'any'; origin: string; asi?: boolean; featureId?: string }[];
+  pendingChoices: { id: string; kind: string; pick: number; of: string[] | 'any'; origin: string; asi?: boolean; featureId?: string; repeat?: number }[];
+  edition: Edition;
   /** Все выборы владений (и сделанные, и нет) с источником — для счётчиков «Класс 1/2, Раса 0/1» */
   choiceGroups: { id: string; kind: ProficiencyKind; pick: number; of: string[] | 'any'; origin: string; from: FeatureFrom; chosen: string[] }[];
   /** Владения, данные без выбора, с источником */
@@ -264,8 +271,13 @@ export function computeSheet(c: Character, content: ContentIndex): Sheet {
   for (const { effect: e } of effects) {
     if (e.type === 'ability_bonus') scores[e.ability] += e.value;
     if (e.type === 'ability_choice') {
+      const taken = new Map<string, number>();
       for (const a of (c.choices[e.id] ?? []).slice(0, e.pick)) {
-        if ((ABILITIES as readonly string[]).includes(a)) scores[a as Ability] += e.value;
+        if (!(ABILITIES as readonly string[]).includes(a)) continue;
+        const n = (taken.get(a) ?? 0) + 1;
+        if (e.repeat && n > e.repeat) continue;
+        taken.set(a, n);
+        scores[a as Ability] += e.value;
       }
     }
   }
@@ -326,7 +338,7 @@ export function computeSheet(c: Character, content: ContentIndex): Sheet {
       if (!tookFeat && values.length < e.pick) {
         const asi = asiOrigins.get(e);
         const origin = asi ?? features.find((f) => f.effects?.includes(e))?.origin ?? '';
-        pendingChoices.push({ id: e.id, kind: 'ability', pick: e.pick - values.length, of: e.from ?? [...ABILITIES], origin, ...(asi ? { asi: true } : {}) });
+        pendingChoices.push({ id: e.id, kind: 'ability', pick: e.pick - values.length, of: e.from ?? [...ABILITIES], origin, ...(asi ? { asi: true } : {}), ...(e.repeat ? { repeat: e.repeat } : {}) });
       }
     }
     if (e.type === 'expertise') e.skills.forEach((s) => expertise.add(s));
@@ -417,7 +429,10 @@ export function computeSheet(c: Character, content: ContentIndex): Sheet {
     else hitDice.push({ die, total: entry.level, used: 0 });
   }
   for (const h of hitDice) h.used = Math.min(h.total, c.state.hitDiceUsed[h.die] ?? 0);
-  for (const { effect: e } of effects) if (e.type === 'hp_per_level') maxHp += e.value * level;
+  for (const { effect: e, sourceLevel } of effects) {
+    if (e.type === 'hp_per_level') maxHp += e.value * level;
+    if (e.type === 'formula_bonus' && e.target === 'hp') maxHp += tryFormula(e.expr, { LVL: sourceLevel, PROF: pb, CON: mod('con') });
+  }
   maxHp = ov('maxHp', maxHp) + c.state.maxHpModifier;
   if (c.state.exhaustion >= 4) maxHp = Math.floor(maxHp / 2);
   maxHp = Math.max(maxHp, 1);
@@ -430,6 +445,9 @@ export function computeSheet(c: Character, content: ContentIndex): Sheet {
   const condImmune = new Set<Condition>();
   let initBonus = 0;
   const resources: ResourceValue[] = [];
+  const vars = (lvl: number) => ({
+    LVL: lvl, PROF: pb, STR: mod('str'), DEX: mod('dex'), CON: mod('con'), INT: mod('int'), WIS: mod('wis'), CHA: mod('cha'),
+  });
   for (const { effect: e, sourceLevel } of effects) {
     switch (e.type) {
       case 'speed':
@@ -444,8 +462,9 @@ export function computeSheet(c: Character, content: ContentIndex): Sheet {
       case 'vulnerability': vuln.add(e.damage); break;
       case 'condition_immunity': condImmune.add(e.condition); break;
       case 'initiative_bonus': initBonus += e.value; break;
+      case 'formula_bonus': if (e.target === 'initiative') initBonus += tryFormula(e.expr, vars(sourceLevel)); break;
       case 'resource': {
-        const max = atLevel(e.max, sourceLevel);
+        const max = e.maxExpr ? Math.max(0, tryFormula(e.maxExpr, vars(sourceLevel))) : atLevel(e.max, sourceLevel);
         const prev = resources.find((r) => r.id === e.id);
         if (prev) prev.max = Math.max(prev.max, max);
         else resources.push({ id: e.id, name: e.name, max, used: 0, recharge: e.recharge });
@@ -570,6 +589,7 @@ export function computeSheet(c: Character, content: ContentIndex): Sheet {
     carried: { weight: Math.round(weight * 10) / 10, capacity: scores.str * 15 },
     overridden,
     pendingChoices,
+    edition: c.edition ?? '2014',
     choiceGroups,
     grants,
   };

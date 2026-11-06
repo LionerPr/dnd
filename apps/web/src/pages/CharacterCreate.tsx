@@ -3,6 +3,8 @@ import {
   ABILITY_NAMES,
   ARTISAN_TOOLS,
   BACKGROUNDS,
+  EDITIONS,
+  editionOf,
   GAMING_SETS,
   LANGUAGES,
   SKILLS,
@@ -14,6 +16,7 @@ import {
   type Ability,
   type Character,
   type CharacterClass,
+  type Edition,
   type FeatureFrom,
   type InventoryEntry,
   type Race,
@@ -31,7 +34,7 @@ import { bookShort, profName, searchKey, signed } from '../lib/format';
 import { useCharacter, useCommand, useContentItem, useContentList, useSaveBuild } from '../lib/hooks';
 
 type Save = (u: (c: Character) => Character) => void;
-const STEPS = ['Класс', 'Раса и предыстория', 'Характеристики', 'Мастерство', 'Снаряжение', 'Описание'] as const;
+const STEPS = ['Правила', 'Класс', 'Раса и предыстория', 'Характеристики', 'Мастерство', 'Снаряжение', 'Описание'] as const;
 
 const STANDARD = [15, 14, 13, 12, 10, 8];
 const POINT_COST: Record<number, number> = { 8: 0, 9: 1, 10: 2, 11: 3, 12: 4, 13: 5, 14: 7, 15: 9 };
@@ -76,8 +79,8 @@ export function CharacterCreatePage() {
   const view = q.data;
   const c = view.data;
   const proficiencyLeft = view.sheet.pendingChoices.length;
-  const done = [c.classes.length > 0, !!c.raceId, true, proficiencyLeft === 0, !!c.choices['kit.done'], true];
-  const canNext = step === 0 ? done[0] : step === 1 ? done[1] : true;
+  const done = [!!c.edition, c.classes.length > 0, !!c.raceId, true, proficiencyLeft === 0, !!c.choices['kit.done'], true];
+  const canNext = step === 1 ? done[1] : step === 2 ? done[2] : true;
 
   return (
     <main className="page">
@@ -100,12 +103,13 @@ export function CharacterCreatePage() {
         ))}
       </ol>
 
-      {step === 0 && <ClassStep view={view} save={save} />}
-      {step === 1 && <OriginStep view={view} save={save} />}
-      {step === 2 && <AbilitiesStep view={view} save={save} />}
-      {step === 3 && <MasteryStep view={view} save={save} />}
-      {step === 4 && <EquipmentStep view={view} save={save} />}
-      {step === 5 && <DescriptionStep view={view} save={save} />}
+      {step === 0 && <RulesStep view={view} save={save} />}
+      {step === 1 && <ClassStep view={view} save={save} />}
+      {step === 2 && <OriginStep view={view} save={save} />}
+      {step === 3 && <AbilitiesStep view={view} save={save} />}
+      {step === 4 && <MasteryStep view={view} save={save} />}
+      {step === 5 && <EquipmentStep view={view} save={save} />}
+      {step === 6 && <DescriptionStep view={view} save={save} />}
 
       <div className="save-bar">
         {step > 0 && (
@@ -114,7 +118,7 @@ export function CharacterCreatePage() {
           </button>
         )}
         <span className="grow" />
-        {step === 3 && proficiencyLeft > 0 && <span className="small muted">Не выбрано: {proficiencyLeft}. Можно закончить позже.</span>}
+        {step === 4 && proficiencyLeft > 0 && <span className="small muted">Не выбрано: {proficiencyLeft}. Можно закончить позже.</span>}
         {step < STEPS.length - 1 ? (
           <button className="btn accent" disabled={!canNext} onClick={() => setStep(step + 1)}>
             Дальше <ArrowRight />
@@ -142,6 +146,40 @@ function useFilter() {
 
 const short = (a: string) => ABILITY_NAMES[a as Ability]?.short ?? a;
 
+// ---------- Правила ----------
+
+/** Запись подходит изданию персонажа (без поля — 2014) */
+export const inEdition = (r: { data?: { edition?: Edition } }, ed: Edition) => editionOf(r.data) === ed;
+
+function RulesStep({ view, save }: { view: CharacterView; save: Save }) {
+  const c = view.data;
+  const ed = editionOf(c);
+  const pick = (id: Edition) =>
+    save((d) => {
+      if (editionOf(d) === id) return { ...d, edition: id };
+      // Класс, раса и предыстория другого издания не подходят — начинаем выбор заново
+      return { ...d, edition: id, classes: [], raceId: undefined, subraceId: undefined, backgroundId: undefined, choices: {}, hpRolls: [] };
+    });
+  return (
+    <div className="stack-lg">
+      <h2 className="step-title">Редакция правил</h2>
+      <div className="card-grid wide">
+        {EDITIONS.map((e) => (
+          <button key={e.id} className={`pick-card edition-card${c.edition && ed === e.id ? ' on' : ''}`} onClick={() => pick(e.id)}>
+            <b>{e.name}</b>
+            <span className="muted">{e.note}</span>
+          </button>
+        ))}
+      </div>
+      <p className="small muted">
+        Дальше будут только классы, расы (в 2024 — виды), предыстории и черты выбранного издания. В 2024 характеристики растут от предыстории, а не от вида, и
+        предыстория даёт черту происхождения. Классы и виды 2024 — из открытого SRD 5.2 (© Wizards of the Coast, CC-BY 4.0, перевод — открытый набор Long Story Short).
+        {(c.classes.length > 0 || c.raceId) && ' Смена издания сбросит уже выбранные класс, расу и предысторию.'}
+      </p>
+    </div>
+  );
+}
+
 // ---------- Класс ----------
 
 function ClassStep({ view, save }: { view: CharacterView; save: Save }) {
@@ -150,12 +188,15 @@ function ClassStep({ view, save }: { view: CharacterView; save: Save }) {
   const current = c.classes[0];
   const cls = useContentItem<CharacterClass>(current?.classId);
   const lvl1 = cls.data?.features.filter((f) => (f.level ?? 1) <= 1 && !f.optional) ?? [];
-  const items = classes.data?.items ?? [];
+  const items = (classes.data?.items ?? []).filter((r) => inEdition(r, editionOf(c)));
   return (
     <div className="stack-lg">
       <div className="card-grid">
         {items.map((r) => {
-          const hint = CLASS_HINTS[r.name.toLowerCase()];
+          const h = r.data?.hint as CharacterClass['hint'];
+          const hint = h
+            ? { main: h.main.map((g) => g.map((a) => ABILITY_NAMES[a].full).join(' и ')).join(' или '), level: (Math.min(2, h.complexity) + 1) as 1 | 2 | 3 }
+            : CLASS_HINTS[r.name.toLowerCase()];
           return (
             <button
               key={r.id}
@@ -219,7 +260,8 @@ function OriginStep({ view, save }: { view: CharacterView; save: Save }) {
   const race = useContentItem<Race>(c.raceId);
   const { input, match } = useFilter();
   const [homebrew, setHomebrew] = useState(false);
-  const all = races.data?.items ?? [];
+  const ed = editionOf(c);
+  const all = (races.data?.items ?? []).filter((r) => inEdition(r, ed));
   const items = all.filter((r) => match(r.name) && (homebrew || !r.source_url?.includes('/homebrew/') || r.id === c.raceId));
   const hasHomebrew = all.some((r) => r.source_url?.includes('/homebrew/'));
   const custom = !c.backgroundId && !!c.background;
@@ -228,7 +270,7 @@ function OriginStep({ view, save }: { view: CharacterView; save: Save }) {
     <div className="stack-lg">
       <section className="stack">
         <div className="row wrap between">
-          <h2 className="step-title">Раса</h2>
+          <h2 className="step-title">{ed === '2024' ? 'Вид' : 'Раса'}</h2>
           <div className="row" style={{ gap: 8 }}>
             {hasHomebrew && (
               <label className="check small">
@@ -270,7 +312,7 @@ function OriginStep({ view, save }: { view: CharacterView; save: Save }) {
       <section className="stack">
         <h2 className="step-title">Предыстория</h2>
         <div className="card-grid wide">
-          {BACKGROUNDS.map((b) => (
+          {BACKGROUNDS.filter((b) => (b.edition ?? '2014') === ed).map((b) => (
             <button
               key={b.id}
               className={`pick-card${c.backgroundId === b.id ? ' on' : ''}`}
@@ -288,6 +330,7 @@ function OriginStep({ view, save }: { view: CharacterView; save: Save }) {
                 ))}
                 {b.toolChoice && <span className="src-tag src-class">{b.toolChoice.of === GAMING_SETS ? 'игровой набор' : 'инструменты ремесленника'} на выбор</span>}
                 {b.languages ? <span className="src-tag src-class">{b.languages === 1 ? 'язык' : `${b.languages} языка`} на выбор</span> : null}
+                {b.abilityPool && <span className="src-tag src-background">+3 к {b.abilityPool.options.map((a) => ABILITY_NAMES[a].short).join(', ')}</span>}
               </span>
               <span className="small muted">{b.feature.name}</span>
             </button>
@@ -630,14 +673,19 @@ function EquipmentStep({ view, save }: { view: CharacterView; save: Save }) {
   const kit = useMemo(() => parseKit(cls.data?.equipment), [cls.data?.equipment]);
   const bg = backgroundById(c.backgroundId);
   const [mode, setMode] = useState<'kit' | 'gold'>('kit');
+  const [bgGold, setBgGold] = useState(false);
+  const fixedKit = cls.data?.kit;
   const [picks, setPicks] = useState<number[]>([]);
   const [gold, setGold] = useState<number | null>(null);
   const items = catalog.data?.items ?? [];
 
-  const classLines = mode === 'kit' ? kit.lines.map((l, i) => l.options[picks[i] ?? 0]!).flatMap(kitItems) : [];
-  const bgLines = (bg?.equipment ?? []).flatMap(kitItems);
+  // 2024: набор класса — готовый список и немного золота, либо только золото
+  const fixed = fixedKit ? fixedKit[mode === 'kit' ? 0 : fixedKit.length - 1] : undefined;
+  const classLines = fixed ? fixed.items.flatMap(kitItems) : mode === 'kit' ? kit.lines.map((l, i) => l.options[picks[i] ?? 0]!).flatMap(kitItems) : [];
+  const bgLines = bgGold ? [] : (bg?.equipment ?? []).flatMap(kitItems);
   const entries = [...classLines, ...bgLines].map((x) => ({ ...x, row: findItem(items, x.name) }));
-  const money = (mode === 'gold' ? gold ?? 0 : 0) + (bg?.gold ?? 0);
+  const classMoney = fixed ? fixed.gold : mode === 'gold' ? gold ?? 0 : 0;
+  const money = classMoney + (bgGold ? bg?.goldInstead ?? 0 : bg?.gold ?? 0);
   const already = !!c.choices['kit.done'];
 
   const apply = () => {
@@ -656,7 +704,17 @@ function EquipmentStep({ view, save }: { view: CharacterView; save: Save }) {
       <section className="stack">
         <div className="row wrap between">
           <h2 className="step-title">От класса{cls.data ? `: ${cls.data.name}` : ''}</h2>
-          {kit.gold && (
+          {fixedKit && fixedKit.length > 1 && (
+            <Segmented
+              options={[
+                { id: 'kit', label: `${fixedKit[0]!.label}${fixedKit[0]!.gold ? ` + ${fixedKit[0]!.gold} зм` : ''}` },
+                { id: 'gold', label: `${fixedKit[fixedKit.length - 1]!.label}: ${fixedKit[fixedKit.length - 1]!.gold} зм` },
+              ]}
+              value={mode}
+              onChange={setMode}
+            />
+          )}
+          {!fixedKit && kit.gold && (
             <Segmented
               options={[
                 { id: 'kit', label: 'Снаряжение' },
@@ -670,8 +728,10 @@ function EquipmentStep({ view, save }: { view: CharacterView; save: Save }) {
             />
           )}
         </div>
-        {!cls.data?.equipment && <p className="small muted">У класса нет списка снаряжения (импортируйте класс заново) — добавьте вещи во вкладке «Снаряжение» листа.</p>}
-        {mode === 'kit' ? (
+        {fixed ? (
+          fixed.items.length > 0 && <div className="small">{fixed.items.join(', ')}</div>
+        ) : !cls.data?.equipment && <p className="small muted">У класса нет списка снаряжения (импортируйте класс заново) — добавьте вещи во вкладке «Снаряжение» листа.</p>}
+        {fixed ? null : mode === 'kit' ? (
           <div className="stack" style={{ gap: 8 }}>
             {kit.lines.map((l, i) =>
               l.options.length > 1 ? (
@@ -701,7 +761,19 @@ function EquipmentStep({ view, save }: { view: CharacterView; save: Save }) {
       </section>
 
       <section className="stack">
-        <h2 className="step-title">От предыстории{bg ? `: ${bg.name}` : ''}</h2>
+        <div className="row wrap between">
+          <h2 className="step-title">От предыстории{bg ? `: ${bg.name}` : ''}</h2>
+          {bg?.goldInstead && (
+            <Segmented
+              options={[
+                { id: 'kit', label: `Снаряжение + ${bg.gold} зм` },
+                { id: 'gold', label: `Золото: ${bg.goldInstead} зм` },
+              ]}
+              value={bgGold ? 'gold' : 'kit'}
+              onChange={(m) => setBgGold(m === 'gold')}
+            />
+          )}
+        </div>
         {bg ? (
           <div className="small">
             {bg.equipment.join(', ')} <span className="accent-text">+ {bg.gold} зм</span>

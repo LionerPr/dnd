@@ -1,4 +1,4 @@
-import { ABILITY_NAMES, totalLevel, type Character, type CharacterClass, type Sheet } from '@dnd/rules-engine';
+import { ABILITY_NAMES, editionOf, totalLevel, type Character, type CharacterClass, type Sheet } from '@dnd/rules-engine';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { ArrowRight, Dices } from 'lucide-react';
 import { useMemo, useState } from 'react';
@@ -127,7 +127,7 @@ export function LevelUpModal({ view, onClose, onSave }: { view: CharacterView; o
           aria-label="Мультикласс"
         >
           <option value="">{c.classes.length ? 'Мультикласс: другой класс…' : 'Выберите класс…'}</option>
-          {(classes.data?.items ?? []).filter((x) => !ownClasses.has(x.id)).map((x) => (
+          {(classes.data?.items ?? []).filter((x) => !ownClasses.has(x.id) && editionOf(x.data) === editionOf(c)).map((x) => (
             <option key={x.id} value={x.id}>
               {x.name}
             </option>

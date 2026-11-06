@@ -3,7 +3,7 @@ import { Download, FileUp, Plus, Search, Square } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { parsePage, saveToLibrary, startCatalog, stopCatalog, useCatalogJob, type ImportKind, type Parsed } from '../lib/dndsu';
-import { api, type ContentRow } from '../api/client';
+import { api, canAuthor, type ContentRow } from '../api/client';
 import { Empty, Field, Loading, Modal, Segmented, Tabs, useToast } from '../components/ui';
 import { bookShort, KIND_NAMES, levelName, plural, schoolName, searchKey } from '../lib/format';
 import { SpellCard } from '../components/sheet/SpellsTab';
@@ -17,9 +17,11 @@ const ITEM_CATEGORIES: Record<string, string> = {
   weapon: 'оружие', armor: 'доспех', shield: 'щит', gear: 'снаряжение', tool: 'инструмент', magic: 'магический', consumable: 'расходуемый', other: 'прочее',
 };
 
+const RARITY_ORDER = (r: string) => ['обычн', 'необычн', 'редк', 'очень редк', 'легендарн', 'артефакт', 'редкость варьируется'].findIndex((x) => r.startsWith(x)) + (r.startsWith('очень') ? 0.5 : 0);
+
 function rowMeta(r: ContentRow) {
   const d = r.data ?? {};
-  const book = [/\/homebrew\//.test(d.sourceUrl ?? '') && 'самодельное', bookShort(d.book)].filter(Boolean).join(', ');
+  const book = [d.edition === '2024' && '2024', /\/homebrew\//.test(d.sourceUrl ?? '') && 'самодельное', bookShort(d.book)].filter(Boolean).join(', ');
   const meta = rowKindMeta(r, d);
   return [book, meta].filter(Boolean).join(' · ');
 }
@@ -50,16 +52,41 @@ export function LibraryPage() {
   const [mine, setMine] = useState<'all' | 'mine'>('all');
   const [level, setLevel] = useState<string>('any');
   const [classId, setClassId] = useState('');
+  const [subclass, setSubclass] = useState('');
+  const [edition, setEdition] = useState<'all' | '2014' | '2024'>('all');
+  const [book, setBook] = useState('');
+  const [sort, setSort] = useState<'name' | 'book'>('name');
+  const [category, setCategory] = useState('');
+  const [rarity, setRarity] = useState('');
   const classList = useContentList('class');
   const [importOpen, setImportOpen] = useState(false);
   const list = useContentList(kind);
 
-  const rows = (list.data?.items ?? [])
+  const all = list.data?.items ?? [];
+  const hasEditions = all.some((r) => r.data?.edition === '2024');
+  const books = [...new Set(all.map((r) => bookShort(r.data?.book)).filter(Boolean) as string[])].sort((a, b) => a.localeCompare(b, 'ru'));
+  const rarities = [...new Set(all.map((r) => r.data?.rarity).filter(Boolean) as string[])].sort((a, b) => RARITY_ORDER(a) - RARITY_ORDER(b));
+  const className = classList.data?.items.find((c) => c.id === classId)?.name.toLowerCase();
+  // Подклассы, у которых есть свои заклинания («путь четырёх стихий (монах)»), — для выбранного класса
+  const subclasses = className
+    ? [...new Set(all.flatMap((r) => (r.data?.subclassNames ?? []) as string[]).filter((n) => n.toLowerCase().includes(`(${className})`)))].sort((a, b) => a.localeCompare(b, 'ru'))
+    : [];
+  const rows = all
     .filter((r) => searchKey(r.name).includes(searchKey(q.trim())))
+    .filter((r) => edition === 'all' || (r.data?.edition ?? '2014') === edition)
+    .filter((r) => !book || bookShort(r.data?.book) === book)
+    .filter((r) => kind !== 'item' || !category || r.data?.category === category)
+    .filter((r) => kind !== 'item' || !rarity || r.data?.rarity === rarity)
+    .filter((r) => kind !== 'spell' || !subclass || (r.data?.subclassNames ?? []).includes(subclass))
     .filter((r) => mine === 'all' || r.owner_id === user?.id)
     .filter((r) => kind !== 'spell' || level === 'any' || String(r.data?.level ?? 0) === level)
-    .filter((r) => kind !== 'spell' || !classId || (r.data?.classes ?? []).includes(classId))
-    .sort((a, b) => (kind === 'spell' ? (a.data.level ?? 0) - (b.data.level ?? 0) : 0) || a.name.localeCompare(b.name, 'ru'));
+    .filter((r) => kind !== 'spell' || !classId || subclass || (r.data?.classes ?? []).includes(classId))
+    .sort(
+      (a, b) =>
+        (kind === 'spell' ? (a.data.level ?? 0) - (b.data.level ?? 0) : 0) ||
+        (sort === 'book' ? (bookShort(a.data?.book) ?? '').localeCompare(bookShort(b.data?.book) ?? '', 'ru') : 0) ||
+        a.name.localeCompare(b.name, 'ru'),
+    );
 
   return (
     <main className="page">
@@ -68,6 +95,7 @@ export function LibraryPage() {
           <h1>Библиотека</h1>
           <div className="sub">Расы, классы, заклинания, предметы и существа: из dnd.su и ваши собственные</div>
         </div>
+        {canAuthor(user) && (
         <div className="row wrap">
           <button className="btn" onClick={() => setImportOpen(true)}>
             <Download /> Импорт с dnd.su
@@ -76,6 +104,7 @@ export function LibraryPage() {
             <Plus /> {kind === 'monster' ? 'Новое существо' : kind === 'spell' ? 'Новое заклинание' : kind === 'item' ? 'Новый предмет' : kind === 'race' ? 'Новая раса' : kind === 'feat' ? 'Новая черта' : 'Новый класс'}
           </button>
         </div>
+        )}
       </div>
 
       <Tabs tabs={KINDS.map((k) => ({ id: k, label: KIND_NAMES[k]!.many }))} value={kind} onChange={(k) => setParams(k === 'race' ? {} : { kind: k }, { replace: true })} />
@@ -96,7 +125,7 @@ export function LibraryPage() {
           </select>
         )}
         {kind === 'spell' && (
-          <select className="select" style={{ width: 'auto' }} value={classId} onChange={(e) => setClassId(e.target.value)} aria-label="Класс">
+          <select className="select" style={{ width: 'auto' }} value={classId} onChange={(e) => { setClassId(e.target.value); setSubclass(''); }} aria-label="Класс">
             <option value="">Все классы</option>
             {(classList.data?.items ?? []).map((c) => (
               <option key={c.id} value={c.id}>
@@ -104,6 +133,55 @@ export function LibraryPage() {
               </option>
             ))}
           </select>
+        )}
+        {kind === 'spell' && subclasses.length > 0 && (
+          <select className="select" style={{ width: 'auto' }} value={subclass} onChange={(e) => setSubclass(e.target.value)} aria-label="Подкласс">
+            <option value="">Все подклассы</option>
+            {subclasses.map((n) => (
+              <option key={n} value={n}>
+                {n.replace(/\s*\([^)]*\)$/, '')}
+              </option>
+            ))}
+          </select>
+        )}
+        {kind === 'item' && (
+          <select className="select" style={{ width: 'auto' }} value={category} onChange={(e) => setCategory(e.target.value)} aria-label="Тип предмета">
+            <option value="">Все типы</option>
+            {Object.entries(ITEM_CATEGORIES).map(([k, v]) => (
+              <option key={k} value={k}>
+                {v}
+              </option>
+            ))}
+          </select>
+        )}
+        {kind === 'item' && rarities.length > 0 && (
+          <select className="select" style={{ width: 'auto' }} value={rarity} onChange={(e) => setRarity(e.target.value)} aria-label="Редкость">
+            <option value="">Любая редкость</option>
+            {rarities.map((r) => (
+              <option key={r} value={r}>
+                {r}
+              </option>
+            ))}
+          </select>
+        )}
+        {books.length > 1 && (
+          <select className="select" style={{ width: 'auto' }} value={book} onChange={(e) => setBook(e.target.value)} aria-label="Книга">
+            <option value="">Все книги</option>
+            {books.map((b) => (
+              <option key={b} value={b}>
+                {b}
+              </option>
+            ))}
+          </select>
+        )}
+        {(kind === 'race' || kind === 'class' || kind === 'feat') && (
+          <select className="select" style={{ width: 'auto' }} value={sort} onChange={(e) => setSort(e.target.value as 'name' | 'book')} aria-label="Сортировка">
+            <option value="name">По названию</option>
+            <option value="book">По книге</option>
+          </select>
+        )}
+        {hasEditions && (
+          <Segmented options={[{ id: 'all', label: 'Все издания' }, { id: '2014', label: '2014' }, { id: '2024', label: '2024' }]} value={edition} onChange={setEdition} />
         )}
         <Segmented options={[{ id: 'all', label: 'Все' }, { id: 'mine', label: 'Мои' }]} value={mine} onChange={setMine} />
       </div>
@@ -133,7 +211,7 @@ export function LibraryPage() {
         </div>
       )}
 
-      {user?.isAdmin && <CatalogPanel />}
+      {canAuthor(user) && <CatalogPanel />}
       {importOpen && <ImportModal onClose={() => setImportOpen(false)} />}
     </main>
   );
@@ -186,7 +264,7 @@ function ImportModal({ onClose }: { onClose: () => void }) {
             <button className="btn ghost" onClick={() => setPreview(null)}>
               Назад
             </button>
-            {user?.isAdmin && (
+            {canAuthor(user) && (
               <button className="btn" disabled={saveLibrary.isPending} onClick={() => saveLibrary.mutate(preview)}>
                 В общую библиотеку
               </button>

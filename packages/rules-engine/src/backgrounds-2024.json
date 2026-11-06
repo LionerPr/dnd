@@ -1,0 +1,150 @@
+[
+ {
+  "id": "srd24-acolyte",
+  "name": "Послушник",
+  "edition": "2024",
+  "skills": [
+   "insight",
+   "religion"
+  ],
+  "tools": [
+   "Каллиграфические принадлежности"
+  ],
+  "equipment": [
+   "Каллиграфические принадлежности",
+   "Книга (молитвы)",
+   "Священный символ",
+   "Пергамент (10 листов)",
+   "Мантия"
+  ],
+  "gold": 8,
+  "goldInstead": 50,
+  "feature": {
+   "name": "Черта: Посвящённый в магию (Жрец)",
+   "description": "Предыстория даёт черту происхождения «Посвящённый в магию (Жрец)»."
+  },
+  "abilityPool": {
+   "total": 3,
+   "max": 2,
+   "options": [
+    "int",
+    "wis",
+    "cha"
+   ]
+  },
+  "featId": "srd24-feat-magic-initiate-cleric"
+ },
+ {
+  "id": "srd24-criminal",
+  "name": "Преступник",
+  "edition": "2024",
+  "skills": [
+   "sleightOfHand",
+   "stealth"
+  ],
+  "tools": [
+   "Воровские инструменты"
+  ],
+  "equipment": [
+   "2 кинжала",
+   "Воровские инструменты",
+   "Монтировка",
+   "2 кошелька",
+   "Одежда путешественника"
+  ],
+  "gold": 16,
+  "goldInstead": 50,
+  "feature": {
+   "name": "Черта: Бдительный",
+   "description": "Предыстория даёт черту происхождения «Бдительный»."
+  },
+  "abilityPool": {
+   "total": 3,
+   "max": 2,
+   "options": [
+    "dex",
+    "con",
+    "int"
+   ]
+  },
+  "featId": "srd24-feat-alert"
+ },
+ {
+  "id": "srd24-sage",
+  "name": "Мудрец",
+  "edition": "2024",
+  "skills": [
+   "arcana",
+   "history"
+  ],
+  "tools": [
+   "Каллиграфические принадлежности"
+  ],
+  "equipment": [
+   "Боевой посох",
+   "Каллиграфические принадлежности",
+   "Книга (история)",
+   "Пергамент (8 листов)",
+   "Мантия"
+  ],
+  "gold": 8,
+  "goldInstead": 50,
+  "feature": {
+   "name": "Черта: Посвящённый в магию (Волшебник)",
+   "description": "Предыстория даёт черту происхождения «Посвящённый в магию (Волшебник)»."
+  },
+  "abilityPool": {
+   "total": 3,
+   "max": 2,
+   "options": [
+    "con",
+    "int",
+    "wis"
+   ]
+  },
+  "featId": "srd24-feat-magic-initiate-wizard"
+ },
+ {
+  "id": "srd24-soldier",
+  "name": "Солдат",
+  "edition": "2024",
+  "skills": [
+   "athletics",
+   "intimidation"
+  ],
+  "toolChoice": {
+   "pick": 1,
+   "of": [
+    "tools.dice",
+    "tools.chess",
+    "tools.cards",
+    "tools.threedragon"
+   ]
+  },
+  "equipment": [
+   "Копьё",
+   "Короткий лук",
+   "20 стрел",
+   "Игровой набор",
+   "Набор целителя",
+   "Колчан",
+   "Одежда путешественника"
+  ],
+  "gold": 14,
+  "goldInstead": 50,
+  "feature": {
+   "name": "Черта: Неистово атакующий",
+   "description": "Предыстория даёт черту происхождения «Неистово атакующий»."
+  },
+  "abilityPool": {
+   "total": 3,
+   "max": 2,
+   "options": [
+    "str",
+    "dex",
+    "con"
+   ]
+  },
+  "featId": "srd24-feat-savage-attacker"
+ }
+]

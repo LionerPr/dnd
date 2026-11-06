@@ -1,3 +1,4 @@
+import { AdminPage } from './pages/Admin';
 import { LogOut, Moon, Sun, SunMoon } from 'lucide-react';
 import { useState } from 'react';
 import { Link, Navigate, NavLink, Route, Routes, useLocation } from 'react-router-dom';
@@ -48,6 +49,7 @@ function Shell() {
             Мои герои
           </NavLink>
           <NavLink to="/library">Библиотека</NavLink>
+          {user?.isAdmin && <NavLink to="/admin">Пользователи</NavLink>}
         </nav>
         <div className="spacer" />
         <ThemeToggle />
@@ -65,6 +67,7 @@ function Shell() {
         <Route path="/campaigns/:id" element={<CampaignPage />} />
         <Route path="/library" element={<LibraryPage />} />
         <Route path="/library/:id" element={<ContentPage />} />
+        <Route path="/admin" element={<AdminPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </div>

@@ -68,9 +68,21 @@ describe('игра целиком', () => {
 
   it('черты Книги игрока уже в библиотеке', async () => {
     const list = await as(player.cookie, 'GET', '/api/content?kind=feat&limit=500');
-    expect(list.body.items.length).toBe(42);
+    expect(list.body.items.filter((r: { data: { edition?: string } }) => !r.data.edition).length).toBe(42);
+    expect(list.body.items.filter((r: { data: { edition?: string } }) => r.data.edition === '2024').length).toBe(6);
     const tough = list.body.items.find((r: { name: string }) => r.name === 'Крепкий');
     expect((await as(player.cookie, 'GET', `/api/content/${tough.id}`)).body.item.data.effects).toEqual([{ type: 'hp_per_level', value: 2 }]);
+  });
+
+  it('права: создавать записи могут только администратор и модераторы', async () => {
+    const denied = await as(player.cookie, 'POST', '/api/content', { kind: 'feat', name: 'Тест', data: { description: '' } });
+    expect(denied.status).toBe(403);
+    expect((await as(player.cookie, 'GET', '/api/admin/users')).status).toBe(403);
+    const users = await as(dm.cookie, 'GET', '/api/admin/users');
+    const torin = users.body.users.find((u: { username: string }) => u.username === 'torin');
+    expect(torin.isModerator).toBe(false);
+    expect((await as(dm.cookie, 'PUT', `/api/admin/users/${torin.id}`, { isModerator: true })).status).toBe(200);
+    expect((await as(player.cookie, 'GET', '/api/auth/me')).body.user.isModerator).toBe(true);
   });
 
   it('свои раса и класс', async () => {

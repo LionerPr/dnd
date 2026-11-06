@@ -18,7 +18,9 @@ export async function api<T = any>(path: string, opts: { method?: string; body?:
   return data as T;
 }
 
-export interface User { id: string; username: string; displayName: string; isAdmin: boolean }
+export interface User { id: string; username: string; displayName: string; isAdmin: boolean; isModerator?: boolean }
+/** Создавать и править записи библиотеки могут администратор и модераторы */
+export const canAuthor = (u: User | null | undefined) => !!u && (u.isAdmin || !!u.isModerator);
 
 export interface CharacterView {
   id: string;

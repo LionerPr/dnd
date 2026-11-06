@@ -104,6 +104,7 @@ export function CharacterPage() {
           {configured && (
             <div className="level-badge">
               <b>{sheet.level} уровень</b>
+              <span className="tag" title="Редакция правил">{c.edition === '2024' ? '5.5e · 2024' : '5e · 2014'}</span>
               {sheet.level < 20 && (
                 <>
                   <span className="xp-bar" title="Опыт до следующего уровня">

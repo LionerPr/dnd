@@ -409,3 +409,5 @@ span.src-tag { cursor: default; }
 .mastery-row .tags { display: flex; gap: 4px; justify-content: flex-end; flex-wrap: wrap; }
 .good-text { color: var(--good); }
 .attack-head { padding-top: 6px; padding-bottom: 4px; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; text-align: center; }
+.edition-card { padding: 22px 24px; gap: 6px; }
+.edition-card b { font-family: var(--font-display); font-size: 30px; font-weight: 600; }

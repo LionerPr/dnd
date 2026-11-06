@@ -36,6 +36,7 @@ export const levelName = (l: number) => (l === 0 ? 'Заговор' : `${l} ур
 export const searchKey = (s: string) => s.toLowerCase().replace(/ё/g, 'е');
 
 const BOOKS: Record<string, string> = {
+  'SRD 5.2': 'SRD 5.2',
   "Player's Handbook": 'PHB',
   "Player's Handbook 2024": 'PHB 2024',
   'Mordenkainen Presents: Monsters of the Multiverse': 'MPMM',

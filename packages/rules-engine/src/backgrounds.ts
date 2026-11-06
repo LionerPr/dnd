@@ -1,6 +1,8 @@
 // Предыстории из Книги игрока 5e (2014): только игровые числа — навыки, инструменты, языки, снаряжение, золото.
 // Описания умений — краткий пересказ своими словами.
-import type { Skill } from './data.js';
+import type { Ability, Skill } from './data.js';
+import type { Edition } from './types.js';
+import srd2024 from './backgrounds-2024.json' with { type: 'json' };
 
 export interface Background {
   id: string;
@@ -14,6 +16,13 @@ export interface Background {
   equipment: string[];
   gold: number;
   feature: { name: string; description: string };
+  edition?: Edition;
+  /** 2024: +3 к характеристикам из трёх (+2/+1 или +1/+1/+1) */
+  abilityPool?: { total: number; max: number; options: Ability[] };
+  /** 2024: черта происхождения (id в общей библиотеке) */
+  featId?: string;
+  /** 2024: вместо снаряжения — золото */
+  goldInstead?: number;
 }
 
 export const ARTISAN_TOOLS = [
@@ -90,6 +99,9 @@ export const BACKGROUNDS: Background[] = [
     feature: { name: 'Городские тайны', description: 'В городе вы найдёте короткие пути и проведёте отряд вдвое быстрее.' },
   },
 ];
+
+/** Предыстории SRD 5.2 (2024), русский перевод из открытого набора Long Story Short, CC-BY 4.0 */
+BACKGROUNDS.push(...(srd2024 as Background[]));
 
 export const backgroundById = (id: string | undefined) => (id ? BACKGROUNDS.find((b) => b.id === id) : undefined);
 

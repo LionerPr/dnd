@@ -1,7 +1,7 @@
 import type { Api } from '../http.js';
 import { z } from 'zod';
 import type { AppDeps } from '../app.js';
-import { requireUser } from '../auth.js';
+import { canAuthor, requireUser, type User } from '../auth.js';
 import { memberRole, deleteContent, getContent, getContentBatch, listContent, saveContent } from '../repo.js';
 import { forbidden } from '../errors.js';
 import { linkSpellClasses } from './import.js';
@@ -17,6 +17,10 @@ const ContentInput = z.object({
   source: z.enum(['custom', 'dnd.su']).optional(),
   sourceUrl: z.string().max(500).nullable().optional(),
 });
+
+const requireAuthor = (u: User) => {
+  if (!canAuthor(u)) throw forbidden('Создавать и править записи библиотеки могут администратор и модераторы');
+};
 
 export function contentRoutes(api: Api, { db }: AppDeps) {
   api.get('/content', async (req) => {
@@ -50,6 +54,7 @@ export function contentRoutes(api: Api, { db }: AppDeps) {
 
   api.post('/content', async (req) => {
     const user = requireUser(req);
+    requireAuthor(user);
     const body = ContentInput.parse(req.body);
     if (body.campaignId && !(await memberRole(db, body.campaignId, user.id))) throw forbidden();
     // Заклинание с dnd.su: связать названия классов с классами библиотеки
@@ -60,9 +65,10 @@ export function contentRoutes(api: Api, { db }: AppDeps) {
 
   api.put('/content/:id', async (req) => {
     const user = requireUser(req);
+    requireAuthor(user);
     const { id } = req.params as { id: string };
     const body = ContentInput.parse(req.body);
-    await saveContent(db, user.id, { ...body, id });
+    await saveContent(db, user.id, { ...body, id }, canAuthor(user));
     return { item: await getContent(db, user.id, id) };
   });
 
@@ -70,6 +76,7 @@ export function contentRoutes(api: Api, { db }: AppDeps) {
   api.post('/content/:id/copy', async (req) => {
     const user = requireUser(req);
     const { id } = req.params as { id: string };
+    requireAuthor(user);
     const src = await getContent(db, user.id, id);
     const { sourceUrl: _s, ...data } = src.data as Record<string, unknown>;
     const newId = await saveContent(db, user.id, { kind: src.kind, name: `${src.name} (копия)`, data });
@@ -79,7 +86,8 @@ export function contentRoutes(api: Api, { db }: AppDeps) {
   api.delete('/content/:id', async (req) => {
     const user = requireUser(req);
     const { id } = req.params as { id: string };
-    await deleteContent(db, user.id, id, user.isAdmin);
+    requireAuthor(user);
+    await deleteContent(db, user.id, id, canAuthor(user));
     return { ok: true };
   });
 }

@@ -15,7 +15,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, Copy, Plus, Save, Trash2 } from 'lucide-react';
 import { useEffect, useState, type ReactNode } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { api, type ContentRow } from '../api/client';
+import { api, canAuthor, type ContentRow } from '../api/client';
 import { ChipSet, EffectsEditor, FeaturesEditor, uid, type EditableFeature } from '../components/editor/Effects';
 import { FeatureList } from '../components/sheet/FeaturesTab';
 import { SpellCard } from '../components/sheet/SpellsTab';
@@ -78,7 +78,14 @@ export function ContentPage() {
     );
   const row = q.data?.item;
   const kind = (row?.kind ?? (params.get('kind') as Kind)) || 'race';
-  const own = isNew || row?.owner_id === user?.id;
+  const author = canAuthor(user);
+  if (isNew && !author)
+    return (
+      <main className="page">
+        <Empty title="Нет прав">Создавать записи могут администратор и модераторы.</Empty>
+      </main>
+    );
+  const own = isNew || (author && (row?.owner_id === user?.id || row?.owner_id === null));
   return own ? <Editor key={id} row={row} kind={kind} /> : <Viewer row={row!} />;
 }
 
@@ -125,14 +132,16 @@ function Viewer({ row }: { row: ContentRow }) {
           </div>
         </div>
         <div className="row wrap">
-          {user?.isAdmin && !row.owner_id && (
+          {canAuthor(user) && !row.owner_id && (
             <ConfirmButton onConfirm={() => del.mutate()} confirm="Удалить из библиотеки?">
               <Trash2 /> Удалить
             </ConfirmButton>
           )}
-          <button className="btn primary" disabled={copy.isPending} onClick={() => copy.mutate()}>
-            <Copy /> Копия для правки
-          </button>
+          {canAuthor(user) && (
+            <button className="btn primary" disabled={copy.isPending} onClick={() => copy.mutate()}>
+              <Copy /> Копия для правки
+            </button>
+          )}
         </div>
       </div>
       <div className="panel panel-pad">

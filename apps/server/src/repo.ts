@@ -1,4 +1,4 @@
-import type { Character, Content, ContentIndex, Feature } from '@dnd/rules-engine';
+import { backgroundById, type Character, type Content, type ContentIndex, type Feature } from '@dnd/rules-engine';
 import { nanoid } from 'nanoid';
 import type { Db } from './db.js';
 import { forbidden, notFound } from './errors.js';
@@ -80,15 +80,17 @@ export async function saveContent(
   db: Db,
   userId: string | null,
   input: { id?: string; kind: ContentKind; name: string; data: Record<string, unknown>; visibility?: string; campaignId?: string | null; source?: string; sourceUrl?: string | null },
+  /** Администратор и модераторы правят и общую библиотеку */
+  canEditLibrary = false,
 ) {
   if (input.id) {
     const rows = await db.query<ContentRow>(`SELECT * FROM content WHERE id = $1`, [input.id]);
     const row = rows[0];
     if (!row) throw notFound();
-    if (row.owner_id !== userId) throw forbidden('Это чужая запись — сделайте копию');
+    if (row.owner_id !== userId && !(canEditLibrary && row.owner_id === null)) throw forbidden('Это чужая запись — сделайте копию');
     await db.query(
       `UPDATE content SET name = $2, data = $3, visibility = $4, campaign_id = $5, name_lc = $6, updated_at = now() WHERE id = $1`,
-      [input.id, input.name, { ...input.data, id: input.id, name: input.name }, input.visibility ?? row.visibility, input.campaignId ?? row.campaign_id, searchKey(input.name)],
+      [input.id, input.name, { ...input.data, id: input.id, name: input.name, kind: row.kind }, input.visibility ?? row.visibility, input.campaignId ?? row.campaign_id, searchKey(input.name)],
     );
     return input.id;
   }
@@ -149,6 +151,8 @@ export async function contentIndexFor(db: Db, chars: Character[]): Promise<Conte
     c.classes.forEach((cl) => ids.add(cl.classId));
     c.inventory.forEach((i) => i.itemId && ids.add(i.itemId));
     c.featIds.forEach((f) => ids.add(f));
+    const bgFeat = backgroundById(c.backgroundId)?.featId;
+    if (bgFeat) ids.add(bgFeat);
   }
   const rows = await getContentMany(db, [...ids]);
   const index: ContentIndex = { races: new Map(), classes: new Map(), spells: new Map(), items: new Map(), feats: new Map() };

@@ -8,7 +8,12 @@ export interface User {
   username: string;
   displayName: string;
   isAdmin: boolean;
+  /** Модератор: создаёт и правит расы, классы, заклинания, предметы, существа и черты */
+  isModerator: boolean;
 }
+
+/** Создавать и править контент библиотеки могут только администратор и модераторы */
+export const canAuthor = (u: User) => u.isAdmin || u.isModerator;
 
 const SESSION_DAYS = 60;
 export const COOKIE = 'dnd_sid';
@@ -53,7 +58,7 @@ export async function register(db: Db, username: string, displayName: string, pa
   const exists = await db.query(`SELECT 1 FROM users WHERE username = $1`, [name]);
   if (exists.length) throw new HttpError(409, 'Такой логин уже занят');
   const [{ count }] = (await db.query<{ count: number }>(`SELECT count(*) AS count FROM users`)) as [{ count: number }];
-  const user: User = { id: nanoid(), username: name, displayName: displayName.trim() || name, isAdmin: Number(count) === 0 };
+  const user: User = { id: nanoid(), username: name, displayName: displayName.trim() || name, isAdmin: Number(count) === 0, isModerator: false };
   await db.query(`INSERT INTO users (id, username, display_name, password_hash, is_admin) VALUES ($1, $2, $3, $4, $5)`, [
     user.id, user.username, user.displayName, await hashPassword(password), user.isAdmin,
   ]);
@@ -61,13 +66,13 @@ export async function register(db: Db, username: string, displayName: string, pa
 }
 
 export async function login(db: Db, username: string, password: string): Promise<User> {
-  const rows = await db.query<{ id: string; username: string; display_name: string; password_hash: string; is_admin: boolean }>(
+  const rows = await db.query<{ id: string; username: string; display_name: string; password_hash: string; is_admin: boolean; is_moderator: boolean }>(
     `SELECT * FROM users WHERE username = $1`,
     [username.trim().toLowerCase()],
   );
   const row = rows[0];
   if (!row || !(await verifyPassword(password, row.password_hash))) throw new HttpError(401, 'Неверный логин или пароль');
-  return { id: row.id, username: row.username, displayName: row.display_name, isAdmin: row.is_admin };
+  return { id: row.id, username: row.username, displayName: row.display_name, isAdmin: row.is_admin, isModerator: !!row.is_moderator };
 }
 
 export async function createSession(db: Db, userId: string): Promise<string> {
@@ -83,13 +88,13 @@ export async function destroySession(db: Db, token: string) {
 
 export async function userFromToken(db: Db, token: string | undefined): Promise<User | null> {
   if (!token) return null;
-  const rows = await db.query<{ id: string; username: string; display_name: string; is_admin: boolean }>(
-    `SELECT u.id, u.username, u.display_name, u.is_admin FROM sessions s JOIN users u ON u.id = s.user_id
+  const rows = await db.query<{ id: string; username: string; display_name: string; is_admin: boolean; is_moderator: boolean }>(
+    `SELECT u.id, u.username, u.display_name, u.is_admin, u.is_moderator FROM sessions s JOIN users u ON u.id = s.user_id
      WHERE s.token_hash = $1 AND s.expires_at > now()`,
     [await hash(token)],
   );
   const r = rows[0];
-  return r ? { id: r.id, username: r.username, displayName: r.display_name, isAdmin: r.is_admin } : null;
+  return r ? { id: r.id, username: r.username, displayName: r.display_name, isAdmin: r.is_admin, isModerator: !!r.is_moderator } : null;
 }
 
 export function setSessionCookie(reply: Reply, token: string, secure: boolean) {

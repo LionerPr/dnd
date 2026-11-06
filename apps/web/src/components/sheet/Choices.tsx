@@ -38,7 +38,7 @@ export function ChoiceRow({ p, sheet, data, update }: { p: Pending; sheet: Sheet
   const [featFor, setFeatFor] = useState(false);
   const chosen = data.choices[p.id] ?? [];
   const add = (o: string) => update((d) => ({ ...d, choices: { ...d.choices, [p.id]: [...(d.choices[p.id] ?? []), o] } }));
-  const options = optionsFor(p, sheet).filter((o) => p.asi || !chosen.includes(o));
+  const options = optionsFor(p, sheet).filter((o) => (p.repeat ? chosen.filter((x) => x === o).length < p.repeat : p.asi || !chosen.includes(o)));
   const feature = p.featureId ? sheet.features.find((f) => f.id === p.featureId) : undefined;
   const exotic = new Set(LANGUAGES.filter((l) => l.exotic).map((l) => l.name));
 
@@ -47,7 +47,9 @@ export function ChoiceRow({ p, sheet, data, update }: { p: Pending; sheet: Sheet
       <div className="pending-title">
         <b>{p.origin}</b>
         <span className="muted">
-          {p.asi
+          {p.repeat
+            ? ` — ещё ${p.pick}: одну характеристику можно выбрать дважды (+2 и +1) или три разные (+1 к каждой)`
+            : p.asi
             ? chosen.length
               ? ' — ещё одна характеристика (та же ещё раз даст +2)'
               : ' — +2 к одной характеристике (нажмите дважды) или по +1 к двум, либо черта'
@@ -111,6 +113,7 @@ export function ChosenList({ data, update, only }: { data: Character; update: Up
   const label = (id: string) =>
     id.startsWith('class.') ? 'Навыки класса'
     : id.startsWith('asi.') ? `Увеличение характеристик, ${id.split('.').pop()} ур.`
+    : id === 'bg.asi' ? 'Характеристики от предыстории'
     : id.startsWith('part.') ? 'Выбрано'
     : id.endsWith('.expertise') ? 'Компетентность'
     : id.endsWith('.languages') ? 'Языки'
@@ -121,10 +124,10 @@ export function ChosenList({ data, update, only }: { data: Character; update: Up
         <div key={id} className="row wrap" style={{ gap: 6 }}>
           <span className="small muted">{label(id)}:</span>
           {values.map((v, i) =>
-            id.startsWith('asi.') && values.indexOf(v) !== i ? null : (
+            (id.startsWith('asi.') || id === 'bg.asi') && values.indexOf(v) !== i ? null : (
               <span key={`${v}-${i}`} className="chip accent">
                 {optionLabel(id.startsWith('part.') ? 'feature' : '', v)}
-                {id.startsWith('asi.') && values.filter((x) => x === v).length === 2 ? ' +2' : ''}
+                {(id.startsWith('asi.') || id === 'bg.asi') && values.filter((x) => x === v).length === 2 ? ' +2' : ''}
                 <button
                   className="btn ghost xs icon"
                   style={{ height: 18, width: 18, marginRight: -6 }}

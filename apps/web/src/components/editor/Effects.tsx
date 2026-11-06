@@ -22,6 +22,7 @@ export const EFFECT_LABELS: Record<Effect['type'], string> = {
   ac_bonus: 'Бонус к КД',
   ac_formula: 'КД без доспехов',
   initiative_bonus: 'Бонус к инициативе',
+  formula_bonus: 'Бонус по формуле',
   resource: 'Ресурс (заряды)',
 };
 
@@ -43,6 +44,7 @@ function blank(type: Effect['type']): Effect {
     case 'ac_bonus': return { type, value: 1 };
     case 'ac_formula': return { type, base: 10, abilities: ['dex'], allowShield: true };
     case 'initiative_bonus': return { type, value: 1 };
+    case 'formula_bonus': return { type, target: 'initiative', expr: '[PROF]' };
     case 'resource': return { type, id: uid(), name: '', max: 1, recharge: 'long' };
   }
 }
@@ -160,6 +162,13 @@ function EffectBody({ e, set }: { e: Effect; set: (e: Effect) => void }): ReactN
     case 'ac_bonus':
     case 'initiative_bonus':
       return <Num label="Значение" value={e.value} onChange={(value) => set({ ...e, value })} />;
+    case 'formula_bonus':
+      return (
+        <div className="row wrap">
+          <Select value={e.target} options={{ initiative: 'к инициативе', hp: 'к максимуму хитов' }} onChange={(target) => set({ ...e, target })} />
+          <input className="input sm" style={{ width: 200 }} value={e.expr} onChange={(ev) => set({ ...e, expr: ev.target.value })} title="[LVL] — уровень, [PROF] — бонус мастерства, [STR]…[CHA] — модификаторы" />
+        </div>
+      );
     case 'ac_formula':
       return (
         <div className="stack" style={{ gap: 6 }}>

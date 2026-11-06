@@ -6,7 +6,7 @@
 import { assertDndSuUrl } from '@dnd/importer/src/sitemap';
 import { z } from 'zod';
 import type { AppDeps } from '../app.js';
-import { requireUser } from '../auth.js';
+import { canAuthor, requireUser } from '../auth.js';
 import { forbidden, HttpError } from '../errors.js';
 import type { Api } from '../http.js';
 import { upsertLibraryContent } from '../repo.js';
@@ -59,14 +59,14 @@ export function importRoutes(api: Api, { db }: AppDeps) {
   /** Карта сайта — по ней администратор загружает разделы целиком. */
   api.get('/import/sitemap', async (req) => {
     const user = requireUser(req);
-    if (!user.isAdmin) throw forbidden('Каталог загружает администратор');
+    if (!canAuthor(user)) throw forbidden('Каталог загружают администратор и модераторы');
     return textResponse(await cachedFetch('https://dnd.su/sitemap.xml', 'application/xml'), 'application/xml');
   });
 
   /** Разобранная запись — в общую библиотеку (только администратор). Повторный импорт обновляет запись. */
   api.post('/import/library', async (req) => {
     const user = requireUser(req);
-    if (!user.isAdmin) throw forbidden('Общую библиотеку пополняет администратор');
+    if (!canAuthor(user)) throw forbidden('Общую библиотеку пополняют администратор и модераторы');
     const body = z
       .object({ kind: z.enum(['race', 'class', 'spell', 'item']), url: z.string().max(500), data: z.record(z.string(), z.unknown()) })
       .parse(req.body);

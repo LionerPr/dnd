@@ -10,7 +10,7 @@ export interface Db {
 }
 
 const JSON_COLUMNS = new Set(['data', 'settings', 'combat', 'payload', 'before']);
-const BOOL_COLUMNS = new Set(['is_admin', 'undone', 'hidden']);
+const BOOL_COLUMNS = new Set(['is_admin', 'is_moderator', 'undone', 'hidden']);
 export const NOW = `strftime('%Y-%m-%dT%H:%M:%fZ','now')`;
 
 export function translate(sql: string): string {
@@ -144,6 +144,8 @@ const MIGRATIONS: string[] = [
   CREATE INDEX events_campaign ON events(campaign_id, id DESC);
   CREATE INDEX events_target ON events(target_id, id);
   `,
+  // Модераторы: могут создавать и править контент библиотеки, как администратор
+  `ALTER TABLE users ADD COLUMN is_moderator integer NOT NULL DEFAULT 0`,
 ];
 
 let migrated: Promise<void> | null = null;
@@ -156,6 +158,8 @@ let migrated: Promise<void> | null = null;
 const SEEDS = [
   { name: 'gear', version: 1, kind: 'item', load: () => import('./seed/gear.json') },
   { name: 'feats', version: 1, kind: 'feat', load: () => import('./seed/feats.json') },
+  // Классы, виды и черты D&D 5e SRD 5.2 (2024) © Wizards of the Coast, CC-BY 4.0; русский перевод — открытый набор Long Story Short
+  { name: 'srd2024', version: 1, kind: null, load: () => import('./seed/srd2024.json') },
 ] as const;
 
 async function seedLibrary(d1: D1Database) {
@@ -163,7 +167,7 @@ async function seedLibrary(d1: D1Database) {
   const done = new Map((await d1.prepare(`SELECT name, version FROM seeds`).all<{ name: string; version: number }>()).results.map((r) => [r.name, r.version]));
   for (const seed of SEEDS) {
     if ((done.get(seed.name) ?? 0) >= seed.version) continue;
-    const rows = (await seed.load()).default as { id: string; name: string; sourceUrl?: string }[];
+    const rows = (await seed.load()).default as unknown as { id: string; name: string; kind?: string; sourceUrl?: string }[];
     const stmt = d1.prepare(
       `INSERT INTO content (id, kind, name, owner_id, visibility, source, source_url, data, name_lc) VALUES (?1, ?2, ?3, NULL, 'public', ?4, ?5, ?6, ?7)
        ON CONFLICT(id) DO UPDATE SET name = excluded.name, data = excluded.data, name_lc = excluded.name_lc, source_url = excluded.source_url`,
@@ -171,7 +175,8 @@ async function seedLibrary(d1: D1Database) {
     await d1.batch([
       ...rows.map((it) => {
         const source = it.sourceUrl ? 'dnd.su' : 'srd';
-        return stmt.bind(it.id, seed.kind, it.name, source, it.sourceUrl ?? null, JSON.stringify({ ...it, kind: seed.kind, source }), it.name.toLowerCase().replace(/ё/g, 'е'));
+        const kind = seed.kind ?? it.kind!;
+        return stmt.bind(it.id, kind, it.name, source, it.sourceUrl ?? null, JSON.stringify({ ...it, kind, source }), it.name.toLowerCase().replace(/ё/g, 'е'));
       }),
       d1.prepare(`INSERT INTO seeds (name, version) VALUES (?1, ?2) ON CONFLICT(name) DO UPDATE SET version = excluded.version`).bind(seed.name, seed.version),
     ]);

@@ -7,7 +7,7 @@ export type ProficiencyKind = 'armor' | 'weapon' | 'tool' | 'language' | 'save' 
 export type Effect =
   | { type: 'ability_bonus'; ability: Ability; value: number }
   /** «+2 к одной и +1 к другой на выбор»: игрок выбирает, выбор хранится в character.choices */
-  | { type: 'ability_choice'; id: string; pick: number; value: number; from?: Ability[] }
+  | { type: 'ability_choice'; id: string; pick: number; value: number; from?: Ability[]; repeat?: number }
   | { type: 'speed'; walk?: number; fly?: number; swim?: number; climb?: number }
   | { type: 'darkvision'; range: number }
   | { type: 'resistance' | 'immunity' | 'vulnerability'; damage: DamageType }
@@ -23,7 +23,10 @@ export type Effect =
   /** Защита без доспехов и подобное: 10 + модификаторы */
   | { type: 'ac_formula'; base: number; abilities: Ability[]; allowShield: boolean }
   | { type: 'initiative_bonus'; value: number }
-  | { type: 'resource'; id: string; name: string; max: number | Partial<Record<number, number>>; recharge: 'short' | 'long' | 'none' };
+  /** Бонус по формуле: «[PROF]» к инициативе, «[LVL]» к хитам. Переменные: [LVL] (уровень класса), [PROF], [STR]…[CHA] (модификаторы) */
+  | { type: 'formula_bonus'; target: 'initiative' | 'hp' | 'ac'; expr: string }
+  /** maxExpr — максимум по формуле («max([CHA],1)», «5*[LVL]»); если задан, важнее max */
+  | { type: 'resource'; id: string; name: string; max: number | Partial<Record<number, number>>; maxExpr?: string; recharge: 'short' | 'long' | 'none' };
 
 /** Число, растущее с уровнем класса: { 3: 2, 10: 3, 17: 4 } — с 3-го уровня 2, с 10-го 3… */
 export type LevelCount = number | Partial<Record<number, number>>;
@@ -58,6 +61,14 @@ export interface Feature {
 
 export type ContentSource = 'custom' | 'srd' | 'dnd.su';
 
+/** Издание правил: 2014 (5e) или 2024 (5.5e). Без поля — 2014. */
+export type Edition = '2014' | '2024';
+export const EDITIONS: { id: Edition; name: string; note: string }[] = [
+  { id: '2014', name: 'D&D 5e', note: 'Правила 2014 года' },
+  { id: '2024', name: 'D&D 5.5e', note: 'Обновлённые правила 2024 года' },
+];
+export const editionOf = (x: { edition?: Edition } | undefined | null): Edition => x?.edition ?? '2014';
+
 export interface ContentMeta {
   id: string;
   name: string;
@@ -67,6 +78,7 @@ export interface ContentMeta {
   book?: string;
   /** Название на английском */
   nameEn?: string;
+  edition?: Edition;
 }
 
 export interface Race extends ContentMeta {
@@ -110,6 +122,10 @@ export interface CharacterClass extends ContentMeta {
   tools: string[];
   skillChoices: { pick: number; from: Skill[] };
   equipment?: string;
+  /** Стартовое снаряжение по вариантам (2024): «Снаряжение» — предметы и немного золота, «Золото» — только золото */
+  kit?: { label: string; items: string[]; gold: number }[];
+  /** Для карточки: главные характеристики (варианты «или») и сложность 0–2 */
+  hint?: { main: Ability[][]; complexity: number };
   description?: string;
   spellcasting?: Spellcasting;
   features: Feature[];
@@ -268,6 +284,7 @@ export interface Character {
   /** Включённые опциональные умения (id) */
   optionalFeatures: string[];
   hpRolls: number[];
+  edition?: Edition;
   /** Предыстория из Книги игрока (id из BACKGROUNDS); background — её название или своя */
   backgroundId?: string;
   background?: string;
