@@ -63,6 +63,8 @@ export interface NpcData {
   ally: boolean;
   notes: string;
   statblock?: any;
+  /** Что игроки видят о здоровье; пусто — по настройке кампании */
+  hpView?: 'exact' | 'status' | 'none';
   status?: 'healthy' | 'hurt' | 'bloodied' | 'critical' | 'down';
 }
 export interface Npc { id: string; campaign_id: string; data: NpcData }

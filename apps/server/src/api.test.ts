@@ -201,6 +201,14 @@ describe('игра целиком', () => {
     const snapDm = (await as(dm.cookie, 'GET', `/api/campaigns/${campaignId}`)).body;
     expect(snapDm.npcs).toHaveLength(4);
     expect(snapDm.npcs[0].data.hp).toBe(2);
+    // Мастер прячет здоровье одного гоблина: игрок не видит ни хитов, ни самочувствия
+    await as(dm.cookie, 'PUT', `/api/npcs/${g1}`, { hpView: 'none' });
+    const hiddenHp = (await as(player.cookie, 'GET', `/api/campaigns/${campaignId}`)).body.npcs[0].data;
+    expect(hiddenHp.status).toBeUndefined();
+    expect(hiddenHp.hp).toBeUndefined();
+    await as(dm.cookie, 'PUT', `/api/npcs/${g1}`, { hpView: 'exact' });
+    expect((await as(player.cookie, 'GET', `/api/campaigns/${campaignId}`)).body.npcs[0].data.hp).toBe(2);
+    await as(dm.cookie, 'PUT', `/api/npcs/${g1}`, { hpView: null });
   });
 
   it('бой: инициатива и ходы', async () => {

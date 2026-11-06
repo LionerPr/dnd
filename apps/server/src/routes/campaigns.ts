@@ -65,6 +65,7 @@ const NpcInput = z.object({
   initiativeBonus: z.number().int().min(-10).max(30).optional(),
   hidden: z.boolean().optional(),
   ally: z.boolean().optional(),
+  hpView: z.enum(['exact', 'status', 'none']).nullable().optional(),
   notes: z.string().max(5000).optional(),
   monsterId: z.string().optional(),
   statblock: z.record(z.string(), z.unknown()).optional(),
@@ -312,7 +313,7 @@ export function campaignRoutes(api: Api, deps: AppDeps) {
     const { id } = req.params as { id: string };
     await requireDm(deps, id, user);
     const body = z
-      .object({ monsterId: z.string().optional(), count: z.number().int().min(1).max(30).optional(), rollHp: z.boolean().optional(), name: z.string().max(100).optional(), npc: NpcInput.optional(), hidden: z.boolean().optional() })
+      .object({ monsterId: z.string().optional(), count: z.number().int().min(1).max(30).optional(), rollHp: z.boolean().optional(), name: z.string().max(100).optional(), npc: NpcInput.optional(), hidden: z.boolean().optional(), hpView: z.enum(['exact', 'status', 'none']).optional() })
       .parse(req.body);
     const created: NpcRow[] = [];
     const count = body.count ?? 1;
@@ -320,7 +321,7 @@ export function campaignRoutes(api: Api, deps: AppDeps) {
     if (body.monsterId) {
       const m = (await getContent(db, user.id, body.monsterId)).data as unknown as Monster;
       const baseName = body.name || m.name;
-      base = (n) => ({ ...npcFromMonster(m, count > 1 ? `${baseName} ${n}` : baseName, !!body.rollHp, deps.rng), hidden: !!body.hidden });
+      base = (n) => ({ ...npcFromMonster(m, count > 1 ? `${baseName} ${n}` : baseName, !!body.rollHp, deps.rng), hidden: !!body.hidden, ...(body.hpView ? { hpView: body.hpView } : {}) });
     } else if (body.npc) {
       const d = body.npc;
       base = (n) => ({
@@ -328,6 +329,7 @@ export function campaignRoutes(api: Api, deps: AppDeps) {
         ac: d.ac, maxHp: d.maxHp, hp: d.hp ?? d.maxHp, tempHp: d.tempHp ?? 0, conditions: d.conditions ?? [],
         resistances: d.resistances ?? [], immunities: d.immunities ?? [], vulnerabilities: d.vulnerabilities ?? [],
         initiativeBonus: d.initiativeBonus ?? 0, hidden: d.hidden ?? !!body.hidden, ally: d.ally ?? false, notes: d.notes ?? '', statblock: d.statblock, monsterId: d.monsterId,
+        ...(d.hpView || body.hpView ? { hpView: (d.hpView ?? body.hpView)! } : {}),
       });
     } else throw new HttpError(400, 'Нужен монстр из бестиария или данные существа');
     for (let n = 1; n <= count; n++) {
@@ -345,6 +347,7 @@ export function campaignRoutes(api: Api, deps: AppDeps) {
     await requireDm(deps, npc.campaign_id, user);
     const patch = NpcInput.partial().parse(req.body);
     const data = { ...npc.data, ...patch } as NpcData;
+    if (patch.hpView === null) delete data.hpView;
     data.hp = Math.min(data.hp, data.maxHp);
     await db.query(`UPDATE npcs SET data = $2 WHERE id = $1`, [npc.id, data]);
     const row = { ...npc, data };

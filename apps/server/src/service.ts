@@ -134,7 +134,7 @@ export async function runNpcCommand(deps: AppDeps, user: User, npcId: string, cm
       summary: result.summary,
       payload: { command: cmd },
       before: npc.data,
-      hidden: npc.data.hidden,
+      hidden: npc.data.hidden || npc.data.hpView === 'none',
     });
     return { npc: { ...npc, data: result.data }, ev };
   });

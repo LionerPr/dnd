@@ -267,10 +267,14 @@ export interface NpcData {
   hidden: boolean;
   /** Союзник: игроки видят его хиты */
   ally: boolean;
+  /** Что игроки видят о здоровье: точные хиты, самочувствие или ничего. Пусто — по настройке кампании */
+  hpView?: HpView;
   notes: string;
   /** Снимок статблока на момент создания, чтобы мастер видел действия под рукой */
   statblock?: Record<string, unknown>;
 }
+
+export type HpView = 'exact' | 'status' | 'none';
 
 export interface NpcRow {
   id: string;
@@ -290,7 +294,7 @@ export function npcForPlayers(npc: NpcRow, settings: CampaignSettings) {
   const d = npc.data;
   const ratio = d.maxHp > 0 ? d.hp / d.maxHp : 0;
   const status = d.hp <= 0 ? 'down' : ratio <= 0.25 ? 'critical' : ratio <= 0.5 ? 'bloodied' : ratio < 1 ? 'hurt' : 'healthy';
-  const exact = settings.showEnemyHp || d.ally;
+  const view: HpView = d.hpView ?? (settings.showEnemyHp || d.ally ? 'exact' : 'status');
   return {
     id: npc.id,
     campaign_id: npc.campaign_id,
@@ -298,8 +302,9 @@ export function npcForPlayers(npc: NpcRow, settings: CampaignSettings) {
       name: d.name,
       conditions: d.conditions,
       ally: d.ally,
-      status,
-      ...(exact ? { hp: d.hp, maxHp: d.maxHp, tempHp: d.tempHp, ac: d.ac } : {}),
+      hpView: view,
+      ...(view === 'none' ? {} : { status }),
+      ...(view === 'exact' ? { hp: d.hp, maxHp: d.maxHp, tempHp: d.tempHp, ac: d.ac } : {}),
     },
   };
 }

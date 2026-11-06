@@ -11,6 +11,8 @@ import {
   Flag,
   Gift,
   Heart,
+  HeartOff,
+  HeartPulse,
   MoreHorizontal,
   Plus,
   RefreshCw,
@@ -38,6 +40,12 @@ import { isConnected, subscribe } from '../lib/socket';
 type Target = { kind: 'character' | 'npc'; id: string };
 type Cmd = { type: string; [k: string]: unknown };
 
+const HP_VIEW = {
+  exact: { short: 'точные хиты', long: 'точные хиты' },
+  status: { short: 'только самочувствие', long: 'только самочувствие («ранен», «при смерти»)' },
+  none: { short: 'ничего', long: 'ничего, здоровье скрыто' },
+} as const;
+const HP_VIEW_NEXT = { exact: 'status', status: 'none', none: 'exact' } as const;
 const STATUS: Record<string, string> = { healthy: 'Цел', hurt: 'Ранен', bloodied: 'Сильно ранен', critical: 'При смерти', down: 'Повержен' };
 
 // ---------- Живое состояние комнаты ----------
@@ -225,6 +233,7 @@ export function CampaignPage() {
                     key={n.id}
                     npc={n}
                     dm={dm}
+                    showEnemyHp={!!snap.campaign.settings?.showEnemyHp}
                     selected={isSel({ kind: 'npc', id: n.id })}
                     turn={currentTurn === n.id}
                     inCombat={!!combatState?.order.some((o) => o.id === n.id)}
@@ -396,14 +405,15 @@ function CharacterCard({ c, dm, mine, selected, turn, onSelect, run, onMore }: {
 }
 
 function NpcCard({
-  npc, dm, selected, turn, inCombat, combatOn, onSelect, run, onStatblock, onCombat, onChanged,
+  npc, dm, showEnemyHp, selected, turn, inCombat, combatOn, onSelect, run, onStatblock, onCombat, onChanged,
 }: {
-  npc: Npc; dm: boolean; selected: boolean; turn: boolean; inCombat: boolean; combatOn: boolean; onSelect: () => void; run: (c: Cmd) => void; onStatblock: () => void; onCombat: (add: boolean) => void; onChanged: () => void;
+  npc: Npc; dm: boolean; showEnemyHp: boolean; selected: boolean; turn: boolean; inCombat: boolean; combatOn: boolean; onSelect: () => void; run: (c: Cmd) => void; onStatblock: () => void; onCombat: (add: boolean) => void; onChanged: () => void;
 }) {
   const toast = useToast();
   const d = npc.data;
   const exact = d.hp !== undefined && d.maxHp !== undefined;
   const down = exact ? d.hp <= 0 : d.status === 'down';
+  const view = d.hpView ?? (showEnemyHp || d.ally ? 'exact' : 'status');
   const patch = (p: Partial<typeof d>) => api(`/npcs/${npc.id}`, { method: 'PUT', body: p }).then(onChanged).catch((e: Error) => toast(e.message, 'error'));
   return (
     <div className={`member npc${d.ally ? ' ally' : ''}${d.hidden ? ' hidden-npc' : ''}${selected ? ' selected' : ''}${turn ? ' turn' : ''}${down ? ' down' : ''}`}>
@@ -417,6 +427,7 @@ function NpcCard({
           <div className="small muted">
             {d.ally ? 'союзник' : 'противник'}
             {dm && d.hidden && ' · скрыт от игроков'}
+            {dm && !d.hidden && view !== (showEnemyHp || d.ally ? 'exact' : 'status') && ` · игроки видят: ${HP_VIEW[view].short}`}
           </div>
         </div>
         {dm && (
@@ -428,6 +439,14 @@ function NpcCard({
             )}
             <button className="btn ghost sm icon" title={d.hidden ? 'Показать игрокам' : 'Скрыть от игроков'} aria-label="Видимость" onClick={() => patch({ hidden: !d.hidden })}>
               {d.hidden ? <EyeOff /> : <Eye />}
+            </button>
+            <button
+              className={`btn ghost sm icon${view === 'none' ? ' accent-text' : ''}`}
+              title={`Игроки видят здоровье: ${HP_VIEW[view].long}. Нажмите, чтобы сменить`}
+              aria-label="Видимость здоровья"
+              onClick={() => patch({ hpView: HP_VIEW_NEXT[view] })}
+            >
+              {view === 'none' ? <HeartOff /> : view === 'status' ? <HeartPulse /> : <Heart />}
             </button>
             {combatOn && (
               <button className={`btn ghost sm icon${inCombat ? ' accent-text' : ''}`} title={inCombat ? 'Убрать из боя' : 'Добавить в бой'} aria-label="Бой" onClick={() => onCombat(!inCombat)}>
@@ -450,10 +469,12 @@ function NpcCard({
             <HpBar hp={d.hp} max={d.maxHp} temp={d.tempHp} />
           </div>
         </div>
-      ) : (
+      ) : d.status ? (
         <div className={`chip small${d.status === 'healthy' ? '' : d.status === 'hurt' ? '' : ' danger'}`} style={{ alignSelf: 'flex-start' }}>
-          {STATUS[d.status ?? 'healthy']}
+          {STATUS[d.status]}
         </div>
+      ) : (
+        <div className="small muted">Здоровье неизвестно</div>
       )}
       {(d.ac !== undefined || dm) && (
         <div className="stats">
@@ -857,11 +878,12 @@ function AddNpcModal({ campaignId, onClose, onDone }: { campaignId: string; onCl
   const [count, setCount] = useState(1);
   const [rollHp, setRollHp] = useState(false);
   const [hidden, setHidden] = useState(false);
+  const [hpView, setHpView] = useState<'' | 'exact' | 'status' | 'none'>('');
   const [npc, setNpc] = useState({ name: '', ac: 12, maxHp: 10, initiativeBonus: 0, ally: false, notes: '' });
   const add = useMutation({
     mutationFn: () =>
       api(`/campaigns/${campaignId}/npcs`, {
-        body: mode === 'bestiary' ? { monsterId: monster!.id, count, rollHp, hidden } : { npc: { ...npc, name: npc.name.trim(), hidden }, count },
+        body: mode === 'bestiary' ? { monsterId: monster!.id, count, rollHp, hidden, ...(hpView ? { hpView } : {}) } : { npc: { ...npc, name: npc.name.trim(), hidden, ...(hpView ? { hpView } : {}) }, count },
       }),
     onSuccess: () => {
       toast(count > 1 ? `Добавлено: ${count}` : 'Добавлено');
@@ -925,6 +947,15 @@ function AddNpcModal({ campaignId, onClose, onDone }: { campaignId: string; onCl
         </label>
         <label className="check">
           <input type="checkbox" checked={hidden} onChange={(e) => setHidden(e.target.checked)} /> Скрыть от игроков (засада)
+        </label>
+        <label className="row" style={{ gap: 8 }}>
+          Здоровье для игроков
+          <select className="input" value={hpView} onChange={(e) => setHpView(e.target.value as typeof hpView)} style={{ width: 'auto' }}>
+            <option value="">как в настройках кампании</option>
+            <option value="exact">точные хиты</option>
+            <option value="status">только самочувствие</option>
+            <option value="none">скрыто</option>
+          </select>
         </label>
       </div>
       {count > 1 && <div className="small muted">Получат номера: «{(mode === 'bestiary' ? monster?.name : npc.name) || 'Существо'} 1», «… 2» и так далее.</div>}
