@@ -467,3 +467,19 @@ span.src-tag { cursor: default; }
 .sound-unlock { position: fixed; z-index: 150; left: 50%; bottom: 20px; transform: translateX(-50%); box-shadow: 0 6px 24px rgba(0, 0, 0, 0.25); }
 @media (max-width: 1100px) { .room.room-wide { grid-template-columns: minmax(0, 1fr); } .board-stage { height: 64vh; } }
 input[type='range'] { accent-color: var(--accent); }
+
+/* Доска: тайлы и объекты */
+.tile-swatch { width: 24px; height: 24px; border-radius: 4px; border: 2px solid var(--surface); box-shadow: 0 0 0 1px var(--line-strong); cursor: pointer; padding: 0; position: relative; overflow: hidden; }
+.tile-swatch.on { box-shadow: 0 0 0 2px var(--accent); }
+.tile-swatch.custom { background: conic-gradient(#e74c3c, #f1c40f, #2ecc71, #3498db, #9b59b6, #e74c3c); }
+.tile-swatch.custom input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+.note-bg { filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.25)); }
+.item-text { width: 100%; height: 100%; padding: 0.5em 0.6em; overflow: hidden; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.25; color: #1b1b1b; font-family: var(--font-ui); box-sizing: border-box; }
+.item-text.text { padding: 0 0.15em; white-space: nowrap; line-height: 1.3; font-weight: 600; font-family: var(--font-display); }
+.item-placeholder { opacity: 0.45; font-style: italic; font-size: 0.8em; }
+.item-edit { width: 100%; height: 100%; resize: none; border: 0; outline: 2px solid var(--accent); background: rgba(255, 255, 255, 0.55); padding: 0.5em 0.6em; line-height: 1.25; color: #1b1b1b; font-family: var(--font-ui); box-sizing: border-box; }
+.item-edit.text { font-weight: 600; font-family: var(--font-display); padding: 0.1em 0.2em; }
+.item-outline { fill: none; stroke: var(--accent); stroke-dasharray: 6 4; }
+.item-handle { fill: #fff; stroke: var(--accent); stroke-width: 2px; vector-effect: non-scaling-stroke; cursor: nwse-resize; }
+.board-stage.dropping { outline: 3px dashed var(--accent); outline-offset: -3px; }
+.board-drop { position: absolute; inset: 0; display: grid; place-items: center; background: color-mix(in srgb, var(--accent) 12%, transparent); font-weight: 700; color: var(--accent); pointer-events: none; }

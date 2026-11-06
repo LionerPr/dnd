@@ -344,4 +344,20 @@ describe('игра целиком', () => {
     expect(b.mapFileId).toBe(imageId);
     expect(b.media[0].caption).toBe('Нашли записку');
   });
+
+  it('доска: тайлы и объекты', async () => {
+    const op = (who: { cookie: string }, ...ops: unknown[]) => as(who.cookie, 'POST', `/api/campaigns/${campaignId}/board`, { ops });
+    expect((await op(dm, { t: 'tiles', cells: [[0, 0], [1, 0], [2, 0]], color: '#556677' })).status).toBe(200);
+    await op(dm, { t: 'tiles', cells: [[1, 0]], color: null });
+    const note = await op(dm, { t: 'item-add', item: { type: 'note', x: 10, y: 10, w: 200, h: 160, text: 'Здесь логово', color: '#f7e27a' } });
+    const noteId = note.body.ops[0].item.id;
+    expect((await op(player, { t: 'item-update', id: noteId, patch: { x: 50 } })).status).toBe(403);
+    await op(dm, { t: 'item-update', id: noteId, patch: { x: 300, w: 240 } });
+    expect((await op(dm, { t: 'item-add', item: { type: 'image', x: 0, y: 0, w: 100, h: 100, fileId: imageId } })).status).toBe(200);
+    expect((await op(dm, { t: 'item-add', item: { type: 'image', x: 0, y: 0, w: 100, h: 100, fileId: 'nope' } })).status).toBe(404);
+    const b = (await as(player.cookie, 'GET', `/api/campaigns/${campaignId}/board`)).body.board;
+    expect(b.tiles).toEqual({ '0,0': '#556677', '2,0': '#556677' });
+    expect(b.items.find((i: { id: string }) => i.id === noteId)).toMatchObject({ x: 300, w: 240, text: 'Здесь логово' });
+    expect(b.items).toHaveLength(2);
+  });
 });

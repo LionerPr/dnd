@@ -31,6 +31,21 @@ export interface Board {
   strokes: Stroke[];
   media: MediaPost[];
   music: MusicState;
+  tiles: Record<string, string>;
+  items: BoardItem[];
+}
+export interface BoardItem {
+  id: string;
+  type: 'image' | 'note' | 'text' | 'rect';
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  z: number;
+  fileId?: string;
+  text?: string;
+  color?: string;
+  authorId: string;
 }
 
 export type AppliedOp =
@@ -42,7 +57,11 @@ export type AppliedOp =
   | { t: 'settings'; settings: Pick<Board, 'mapFileId' | 'width' | 'height' | 'grid' | 'showGrid' | 'playersDraw'> }
   | { t: 'media-add'; post: MediaPost }
   | { t: 'media-remove'; id: string }
-  | { t: 'music'; music: MusicState };
+  | { t: 'music'; music: MusicState }
+  | { t: 'tiles'; cells: [number, number][]; color: string | null }
+  | { t: 'tiles-clear' }
+  | { t: 'item-set'; item: BoardItem }
+  | { t: 'item-remove'; id: string };
 
 export function applyOps(b: Board, ops: AppliedOp[]): Board {
   let n = b;
@@ -75,6 +94,24 @@ export function applyOps(b: Board, ops: AppliedOp[]): Board {
       case 'music':
         n = { ...n, music: op.music };
         break;
+      case 'tiles': {
+        const tiles = { ...n.tiles };
+        for (const [x, y] of op.cells) {
+          if (op.color) tiles[`${x},${y}`] = op.color;
+          else delete tiles[`${x},${y}`];
+        }
+        n = { ...n, tiles };
+        break;
+      }
+      case 'tiles-clear':
+        n = { ...n, tiles: {} };
+        break;
+      case 'item-set':
+        n = { ...n, items: n.items.some((i) => i.id === op.item.id) ? n.items.map((i) => (i.id === op.item.id ? op.item : i)) : [...n.items, op.item] };
+        break;
+      case 'item-remove':
+        n = { ...n, items: n.items.filter((i) => i.id !== op.id) };
+        break;
     }
   }
   return n;
@@ -96,7 +133,7 @@ export function useBoard(campaignId: string) {
     queryFn: async () => {
       const r = await api<{ board: Board; serverNow: number }>(`/campaigns/${campaignId}/board`);
       noteServerTime(r.serverNow);
-      return r.board;
+      return { ...r.board, tiles: r.board.tiles ?? {}, items: r.board.items ?? [] };
     },
     staleTime: Infinity,
   });

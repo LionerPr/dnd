@@ -69,6 +69,24 @@ export interface Board {
   strokes: Stroke[];
   media: MediaPost[];
   music: MusicState;
+  /** Тайлы: «x,y» клетки → цвет. Из них мастер и игроки строят карту прямо на доске */
+  tiles: Record<string, string>;
+  /** Объекты как в Miro: картинки, заметки, надписи, фигуры */
+  items: BoardItem[];
+}
+
+export interface BoardItem {
+  id: string;
+  type: 'image' | 'note' | 'text' | 'rect';
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  z: number;
+  fileId?: string;
+  text?: string;
+  color?: string;
+  authorId: string;
 }
 
 export const emptyBoard = (): Board => ({
@@ -82,12 +100,16 @@ export const emptyBoard = (): Board => ({
   strokes: [],
   media: [],
   music: { trackId: null, playing: false, offset: 0, startedAt: 0, speed: 1, volume: 0.8, fade: 2 },
+  tiles: {},
+  items: [],
 });
 
 const MAX_STROKES = 300;
 const MAX_POINTS = 600;
 const MAX_MEDIA = 100;
 const MAX_TOKENS = 120;
+const MAX_TILES = 8000;
+const MAX_ITEMS = 200;
 
 const coord = z.number().finite().min(-10000).max(30000);
 const color = z.string().regex(/^#[0-9a-fA-F]{3,8}$/);
@@ -103,6 +125,11 @@ const Op = z.discriminatedUnion('t', [
   z.object({ t: z.literal('settings'), mapFileId: z.string().max(40).nullable().optional(), width: z.number().int().min(200).max(12000).optional(), height: z.number().int().min(200).max(12000).optional(), grid: z.number().min(10).max(400).optional(), showGrid: z.boolean().optional(), playersDraw: z.boolean().optional() }),
   z.object({ t: z.literal('media-add'), fileId: z.string().max(40), caption: z.string().max(300).optional() }),
   z.object({ t: z.literal('media-remove'), id: z.string().max(40) }),
+  z.object({ t: z.literal('tiles'), cells: z.array(z.tuple([z.number().int().min(-500).max(2000), z.number().int().min(-500).max(2000)])).min(1).max(4000), color: color.nullable() }),
+  z.object({ t: z.literal('tiles-clear') }),
+  z.object({ t: z.literal('item-add'), item: z.object({ type: z.enum(['image', 'note', 'text', 'rect']), x: coord, y: coord, w: z.number().min(10).max(20000), h: z.number().min(10).max(20000), fileId: z.string().max(40).optional(), text: z.string().max(2000).optional(), color: color.optional() }) }),
+  z.object({ t: z.literal('item-update'), id: z.string().max(40), patch: z.object({ x: coord.optional(), y: coord.optional(), w: z.number().min(10).max(20000).optional(), h: z.number().min(10).max(20000).optional(), text: z.string().max(2000).optional(), color: color.optional(), z: z.enum(['front', 'back']).optional() }) }),
+  z.object({ t: z.literal('item-remove'), id: z.string().max(40) }),
   z.object({ t: z.literal('music'), trackId: z.string().max(40).nullable().optional(), playing: z.boolean().optional(), position: z.number().min(0).max(36000).optional(), speed: z.number().min(0.25).max(3).optional(), volume: z.number().min(0).max(1).optional(), fade: z.number().min(0).max(15).optional() }),
 ]);
 export type BoardOp = z.infer<typeof Op>;
@@ -117,7 +144,11 @@ export type AppliedOp =
   | { t: 'settings'; settings: Pick<Board, 'mapFileId' | 'width' | 'height' | 'grid' | 'showGrid' | 'playersDraw'> }
   | { t: 'media-add'; post: MediaPost }
   | { t: 'media-remove'; id: string }
-  | { t: 'music'; music: MusicState };
+  | { t: 'music'; music: MusicState }
+  | { t: 'tiles'; cells: [number, number][]; color: string | null }
+  | { t: 'tiles-clear' }
+  | { t: 'item-set'; item: BoardItem }
+  | { t: 'item-remove'; id: string };
 
 const round = (n: number) => Math.round(n * 10) / 10;
 
@@ -215,6 +246,53 @@ export async function applyOp(b: Board, op: BoardOp, c: Ctx): Promise<AppliedOp[
       if (!c.dm && p.authorId !== c.user.id) throw forbidden('Убрать чужую картинку может только мастер');
       b.media = b.media.filter((x) => x.id !== op.id);
       return [{ t: 'media-remove', id: op.id }];
+    }
+    case 'tiles': {
+      if (!c.dm && !b.playersDraw) throw forbidden('Мастер выключил рисование для игроков');
+      for (const [x, y] of op.cells) {
+        const k = `${x},${y}`;
+        if (op.color) b.tiles[k] = op.color;
+        else delete b.tiles[k];
+      }
+      if (Object.keys(b.tiles).length > MAX_TILES) throw new HttpError(400, 'Слишком много тайлов на доске');
+      return [{ t: 'tiles', cells: op.cells, color: op.color }];
+    }
+    case 'tiles-clear': {
+      if (!c.dm) throw forbidden('Это может только мастер');
+      b.tiles = {};
+      return [{ t: 'tiles-clear' }];
+    }
+    case 'item-add': {
+      if (!c.dm && !b.playersDraw) throw forbidden('Мастер выключил рисование для игроков');
+      if (b.items.length >= MAX_ITEMS) throw new HttpError(400, 'На доске слишком много объектов');
+      const it = op.item;
+      if (it.type === 'image' && !(it.fileId && (await c.fileOk(it.fileId, 'image')))) throw notFound('Картинка не найдена');
+      const z = b.items.reduce((m, x) => Math.max(m, x.z), 0) + 1;
+      const item: BoardItem = { id: nanoid(8), type: it.type, x: round(it.x), y: round(it.y), w: round(it.w), h: round(it.h), z, fileId: it.type === 'image' ? it.fileId : undefined, text: it.text, color: it.color, authorId: c.user.id };
+      b.items.push(item);
+      return [{ t: 'item-set', item }];
+    }
+    case 'item-update': {
+      const item = b.items.find((x) => x.id === op.id);
+      if (!item) throw notFound('Объект не найден');
+      if (!c.dm && item.authorId !== c.user.id) throw forbidden('Чужой объект двигает мастер');
+      const p = op.patch;
+      if (p.x !== undefined) item.x = round(p.x);
+      if (p.y !== undefined) item.y = round(p.y);
+      if (p.w !== undefined) item.w = round(p.w);
+      if (p.h !== undefined) item.h = round(p.h);
+      if (p.text !== undefined) item.text = p.text;
+      if (p.color !== undefined) item.color = p.color;
+      if (p.z === 'front') item.z = b.items.reduce((m, x) => Math.max(m, x.z), 0) + 1;
+      if (p.z === 'back') item.z = b.items.reduce((m, x) => Math.min(m, x.z), 0) - 1;
+      return [{ t: 'item-set', item }];
+    }
+    case 'item-remove': {
+      const item = b.items.find((x) => x.id === op.id);
+      if (!item) return [];
+      if (!c.dm && item.authorId !== c.user.id) throw forbidden('Убрать чужой объект может только мастер');
+      b.items = b.items.filter((x) => x.id !== op.id);
+      return [{ t: 'item-remove', id: op.id }];
     }
     case 'music': {
       if (!c.dm) throw forbidden('Музыкой управляет мастер');
