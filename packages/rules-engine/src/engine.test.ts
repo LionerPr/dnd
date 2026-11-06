@@ -340,3 +340,23 @@ describe('универсальное оружие', () => {
     expect(withShield.attacks.find((x) => x.id === 's1')!.versatileBlocked).toBe(true);
   });
 });
+
+describe('оружие монаха', () => {
+  it('боевой посох у монаха — Ловкостью и не меньше кости боевых искусств', () => {
+    const monk: CharacterClass = {
+      kind: 'class', id: 'monk', name: 'Монах', source: 'srd', hitDie: 8, saves: ['str', 'dex'], armor: [], weapons: ['simple'], tools: [],
+      skillChoices: { pick: 2, from: ['acrobatics'] }, features: [], subclassLevel: 3, subclasses: [],
+      levels: [{ level: 1, features: [], columns: { 'Боевые искусства': '1к4' } }, { level: 5, features: [], columns: { 'Боевые искусства': '1к6' } }],
+    };
+    const staff: Item = { kind: 'item', id: 'staff', name: 'Боевой посох', source: 'srd', category: 'weapon',
+      weapon: { damage: '1к6', damageType: 'bludgeoning', properties: ['Универсальное (1к8)'], martial: false, ranged: false } };
+    const idx: ContentIndex = { ...content, classes: new Map([[monk.id, monk]]), items: new Map([[staff.id, staff]]) };
+    const c: Character = { ...torin(), raceId: undefined, subraceId: undefined, classes: [{ classId: 'monk', level: 1 }],
+      baseAbilities: { str: 8, dex: 16, con: 12, int: 10, wis: 14, cha: 10 }, inventory: [{ id: 's1', itemId: 'staff', qty: 1, equipped: true }] };
+    const a = computeSheet(c, idx).attacks.find((x) => x.id === 's1')!;
+    expect(a.ability).toBe('dex');
+    expect(a.bonus).toBe(5);
+    expect(a.damage).toBe('1к6+3');
+    expect(a.versatile).toBe('1к8+3');
+  });
+});

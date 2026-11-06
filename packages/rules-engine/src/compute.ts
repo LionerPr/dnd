@@ -489,12 +489,21 @@ export function computeSheet(c: Character, content: ContentIndex): Sheet {
 
   // --- Атаки
   const attacks: AttackLine[] = [];
+  // «Боевые искусства» монаха: кость из таблицы класса
+  const martialRaw = classColumn(c, content, /боевые искусства/i);
+  const martial = martialRaw && /^\d+к\d+$/.test(martialRaw) ? martialRaw : undefined;
+  const dieSize = (d: string) => Number(d.match(/к(\d+)/)?.[1] ?? 0);
+  const bigger = (d: string) => (martial && dieSize(martial) > dieSize(d) ? martial : d);
+  const withMod = (d: string, m: number) => `${d}${m === 0 ? '' : m > 0 ? `+${m}` : `${m}`}`;
   for (const inv of c.inventory) {
     const item = inv.itemId ? content.items.get(inv.itemId) : undefined;
     if (!item?.weapon || !inv.equipped) continue;
     const w = item.weapon;
     const finesse = w.properties.some((p) => /фехтовальное|finesse/i.test(p));
-    const ability: Ability = w.ranged ? 'dex' : finesse && mod('dex') > mod('str') ? 'dex' : 'str';
+    // Оружие монаха: короткий меч и простое рукопашное без «тяжёлое» и «двуручное» — Ловкостью и костью боевых искусств
+    const monkWeapon =
+      !!martial && !w.ranged && (/^короткий меч$/i.test(item.name) || (!w.martial && !w.properties.some((p) => /тяж[её]л|двуручн/i.test(p))));
+    const ability: Ability = w.ranged ? 'dex' : (finesse || monkWeapon) && mod('dex') > mod('str') ? 'dex' : 'str';
     const proficient =
       profs.weapon.has(item.id) || profs.weapon.has(w.martial ? 'martial' : 'simple') || profs.weapon.has(item.name.toLowerCase());
     const m = mod(ability);
@@ -503,18 +512,17 @@ export function computeSheet(c: Character, content: ContentIndex): Sheet {
       id: inv.id,
       name: item.name,
       bonus: ov(`attack.${inv.id}`, m + (proficient ? pb : 0)),
-      damage: `${w.damage}${m === 0 ? '' : m > 0 ? `+${m}` : `${m}`}`,
-      ...(twoHanded ? { versatile: `${twoHanded}${m === 0 ? '' : m > 0 ? `+${m}` : `${m}`}`, ...(shield ? { versatileBlocked: true } : {}) } : {}),
+      damage: withMod(monkWeapon ? bigger(w.damage) : w.damage, m),
+      ...(twoHanded ? { versatile: withMod(monkWeapon ? bigger(twoHanded) : twoHanded, m), ...(shield ? { versatileBlocked: true } : {}) } : {}),
       damageType: w.damageType,
       ability,
       range: w.range,
-      properties: w.properties,
+      properties: monkWeapon ? [...w.properties, 'оружие монаха'] : w.properties,
     });
   }
 
-  // «Боевые искусства»: безоружный удар костью из таблицы класса, Ловкостью или Силой
-  const martial = classColumn(c, content, /боевые искусства/i);
-  if (martial && /^\d+к\d+$/.test(martial)) {
+  // Безоружный удар монаха: кость из таблицы класса, Ловкостью или Силой
+  if (martial) {
     const ability: Ability = mod('dex') > mod('str') ? 'dex' : 'str';
     const m = mod(ability);
     attacks.push({
