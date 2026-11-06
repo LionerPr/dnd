@@ -148,29 +148,34 @@ const MIGRATIONS: string[] = [
 
 let migrated: Promise<void> | null = null;
 
-/** Версия набора обычного снаряжения: поменяйте, когда меняется seed/gear.json, — записи обновятся. */
-const GEAR_VERSION = 1;
-
 /**
- * Обычное снаряжение из Книги игрока (оружие, доспехи, снаряжение, инструменты) — только числа и названия,
- * собраны со статей dnd.su. Попадают в общую библиотеку сами, без импорта.
+ * Встроенная библиотека: обычное снаряжение (seed/gear.json, со статей dnd.su — только числа и названия)
+ * и черты Книги игрока (seed/feats.json, описания — пересказ). Попадают в общую библиотеку сами.
+ * Поменяли файл — поднимите версию, записи обновятся.
  */
-async function seedGear(d1: D1Database) {
+const SEEDS = [
+  { name: 'gear', version: 1, kind: 'item', load: () => import('./seed/gear.json') },
+  { name: 'feats', version: 1, kind: 'feat', load: () => import('./seed/feats.json') },
+] as const;
+
+async function seedLibrary(d1: D1Database) {
   await d1.prepare(`CREATE TABLE IF NOT EXISTS seeds (name text PRIMARY KEY, version integer NOT NULL)`).run();
-  const row = await d1.prepare(`SELECT version FROM seeds WHERE name = 'gear'`).first<{ version: number }>();
-  if (row && row.version >= GEAR_VERSION) return;
-  const { default: gear } = await import('./seed/gear.json');
-  const stmt = d1.prepare(
-    `INSERT INTO content (id, kind, name, owner_id, visibility, source, source_url, data, name_lc) VALUES (?1, 'item', ?2, NULL, 'public', 'dnd.su', ?3, ?4, ?5)
-     ON CONFLICT(id) DO UPDATE SET name = excluded.name, data = excluded.data, name_lc = excluded.name_lc, source_url = excluded.source_url`,
-  );
-  const items = gear as { id: string; name: string; sourceUrl: string }[];
-  await d1.batch([
-    ...items.map((it) =>
-      stmt.bind(it.id, it.name, it.sourceUrl, JSON.stringify({ ...it, kind: 'item', source: 'dnd.su' }), it.name.toLowerCase().replace(/ё/g, 'е')),
-    ),
-    d1.prepare(`INSERT INTO seeds (name, version) VALUES ('gear', ?1) ON CONFLICT(name) DO UPDATE SET version = excluded.version`).bind(GEAR_VERSION),
-  ]);
+  const done = new Map((await d1.prepare(`SELECT name, version FROM seeds`).all<{ name: string; version: number }>()).results.map((r) => [r.name, r.version]));
+  for (const seed of SEEDS) {
+    if ((done.get(seed.name) ?? 0) >= seed.version) continue;
+    const rows = (await seed.load()).default as { id: string; name: string; sourceUrl?: string }[];
+    const stmt = d1.prepare(
+      `INSERT INTO content (id, kind, name, owner_id, visibility, source, source_url, data, name_lc) VALUES (?1, ?2, ?3, NULL, 'public', ?4, ?5, ?6, ?7)
+       ON CONFLICT(id) DO UPDATE SET name = excluded.name, data = excluded.data, name_lc = excluded.name_lc, source_url = excluded.source_url`,
+    );
+    await d1.batch([
+      ...rows.map((it) => {
+        const source = it.sourceUrl ? 'dnd.su' : 'srd';
+        return stmt.bind(it.id, seed.kind, it.name, source, it.sourceUrl ?? null, JSON.stringify({ ...it, kind: seed.kind, source }), it.name.toLowerCase().replace(/ё/g, 'е'));
+      }),
+      d1.prepare(`INSERT INTO seeds (name, version) VALUES (?1, ?2) ON CONFLICT(name) DO UPDATE SET version = excluded.version`).bind(seed.name, seed.version),
+    ]);
+  }
 }
 
 /** Схема создаётся сама при первом запросе — отдельный шаг при выкладке не нужен. */
@@ -184,7 +189,7 @@ export function ensureSchema(d1: D1Database) {
       const stmts = MIGRATIONS[current]!.split(/;\s*\n/).map((s) => s.trim()).filter(Boolean);
       await d1.batch([...stmts.map((s) => d1.prepare(s)), d1.prepare(`UPDATE schema_version SET version = ?1`).bind(current + 1)]);
     }
-    await seedGear(d1);
+    await seedLibrary(d1);
   })().catch((e) => {
     migrated = null;
     throw e;

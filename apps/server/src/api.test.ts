@@ -66,6 +66,13 @@ describe('игра целиком', () => {
     expect(list.body.items.length).toBeGreaterThan(150);
   });
 
+  it('черты Книги игрока уже в библиотеке', async () => {
+    const list = await as(player.cookie, 'GET', '/api/content?kind=feat&limit=500');
+    expect(list.body.items.length).toBe(42);
+    const tough = list.body.items.find((r: { name: string }) => r.name === 'Крепкий');
+    expect((await as(player.cookie, 'GET', `/api/content/${tough.id}`)).body.item.data.effects).toEqual([{ type: 'hp_per_level', value: 2 }]);
+  });
+
   it('свои раса и класс', async () => {
     const race = await as(player.cookie, 'POST', '/api/content', {
       kind: 'race', name: 'Горный дварф',

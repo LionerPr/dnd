@@ -1,0 +1,522 @@
+[
+{
+"id": "phb-feat-alert",
+"name": "Бдительный",
+"description": "+5 к инициативе. Пока вы в сознании, вас нельзя застать врасплох, и скрытые существа не получают преимущество к атакам по вам.",
+"effects": [
+{
+"type": "initiative_bonus",
+"value": 5
+}
+],
+"book": "Player's Handbook"
+},
+{
+"id": "phb-feat-athlete",
+"name": "Атлет",
+"description": "+1 к Силе или Ловкости. Вставать из положения лёжа стоит 5 футов перемещения, лазание не замедляет, прыжок с места — как с разбега.",
+"effects": [
+{
+"type": "ability_choice",
+"id": "feat.athlete.asi",
+"pick": 1,
+"value": 1,
+"from": [
+"str",
+"dex"
+]
+}
+],
+"book": "Player's Handbook"
+},
+{
+"id": "phb-feat-actor",
+"name": "Актёр",
+"description": "+1 к Харизме. Преимущество на Обман и Выступление, когда выдаёте себя за другого; можете подражать голосам и звукам.",
+"effects": [
+{
+"type": "ability_bonus",
+"ability": "cha",
+"value": 1
+}
+],
+"book": "Player's Handbook"
+},
+{
+"id": "phb-feat-charger",
+"name": "Атакующий",
+"description": "Если вы совершили рывок, можете бонусным действием ударить оружием (+5 к урону) или толкнуть цель на 10 футов, если перед этим прошли по прямой хотя бы 10 футов.",
+"effects": [],
+"book": "Player's Handbook"
+},
+{
+"id": "phb-feat-crossbow-expert",
+"name": "Эксперт по арбалетам",
+"description": "Игнорируете свойство «перезарядка» у арбалетов, соседство с врагом не даёт помехи дальнобойным атакам, после атаки одноручным оружием можно бонусным действием выстрелить из ручного арбалета.",
+"effects": [],
+"book": "Player's Handbook"
+},
+{
+"id": "phb-feat-defensive-duelist",
+"name": "Оборонительный дуэлянт",
+"description": "Держа фехтовальное оружие, которым владеете, реакцией добавляете бонус мастерства к КД против одной рукопашной атаки.",
+"effects": [],
+"book": "Player's Handbook",
+"prerequisite": "Ловкость 13"
+},
+{
+"id": "phb-feat-dual-wielder",
+"name": "Боец с двумя оружиями",
+"description": "+1 к КД, когда в каждой руке по рукопашному оружию; можно сражаться двумя оружиями без свойства «лёгкое», доставать и убирать сразу два оружия.",
+"effects": [],
+"book": "Player's Handbook"
+},
+{
+"id": "phb-feat-dungeon-delver",
+"name": "Исследователь подземелий",
+"description": "Преимущество на поиск потайных дверей и на спасброски от ловушек, сопротивление урону ловушек, поиск ловушек на обычной скорости.",
+"effects": [],
+"book": "Player's Handbook"
+},
+{
+"id": "phb-feat-durable",
+"name": "Стойкий",
+"description": "+1 к Телосложению. Тратя кость хитов, восстанавливаете не меньше удвоенного модификатора Телосложения (минимум 2).",
+"effects": [
+{
+"type": "ability_bonus",
+"ability": "con",
+"value": 1
+}
+],
+"book": "Player's Handbook"
+},
+{
+"id": "phb-feat-elemental-adept",
+"name": "Адепт стихий",
+"description": "Выберите кислоту, холод, огонь, электричество или звук: ваши заклинания игнорируют сопротивление этому урону, а единицы на костях урона считаются двойками. Можно брать несколько раз.",
+"effects": [],
+"book": "Player's Handbook",
+"prerequisite": "Умение накладывать хотя бы одно заклинание"
+},
+{
+"id": "phb-feat-grappler",
+"name": "Борец",
+"description": "Преимущество на атаки по существу, которое вы держите в захвате; можете попытаться сковать его, и тогда вы оба опутаны.",
+"effects": [],
+"book": "Player's Handbook",
+"prerequisite": "Сила 13"
+},
+{
+"id": "phb-feat-great-weapon-master",
+"name": "Мастер большого оружия",
+"description": "Критическое попадание или убийство рукопашной атакой даёт бонусным действием ещё одну атаку. Перед атакой тяжёлым оружием можно взять −5 к попаданию ради +10 к урону.",
+"effects": [],
+"book": "Player's Handbook"
+},
+{
+"id": "phb-feat-healer",
+"name": "Лекарь",
+"description": "Набор целителя стабилизирует и восстанавливает 1 хит. Действием и одной его ячейкой лечите 1к6+4 + количество костей хитов цели; одно и то же существо — раз за отдых.",
+"effects": [],
+"book": "Player's Handbook"
+},
+{
+"id": "phb-feat-heavily-armored",
+"name": "Тяжелобронированный",
+"description": "+1 к Силе. Владение тяжёлыми доспехами.",
+"effects": [
+{
+"type": "ability_bonus",
+"ability": "str",
+"value": 1
+},
+{
+"type": "proficiency",
+"kind": "armor",
+"ids": [
+"heavy"
+]
+}
+],
+"book": "Player's Handbook",
+"prerequisite": "Владение средними доспехами"
+},
+{
+"id": "phb-feat-heavy-armor-master",
+"name": "Мастер тяжёлых доспехов",
+"description": "+1 к Силе. В тяжёлых доспехах немагический дробящий, колющий и рубящий урон по вам уменьшается на 3.",
+"effects": [
+{
+"type": "ability_bonus",
+"ability": "str",
+"value": 1
+}
+],
+"book": "Player's Handbook",
+"prerequisite": "Владение тяжёлыми доспехами"
+},
+{
+"id": "phb-feat-inspiring-leader",
+"name": "Вдохновляющий лидер",
+"description": "Потратив 10 минут на речь, даёте до шести существам (включая себя) временные хиты: ваш уровень + модификатор Харизмы. Раз за отдых.",
+"effects": [],
+"book": "Player's Handbook",
+"prerequisite": "Харизма 13"
+},
+{
+"id": "phb-feat-keen-mind",
+"name": "Острый ум",
+"description": "+1 к Интеллекту. Всегда знаете, где север и сколько часов до рассвета или заката; помните всё, что видели или слышали за последний месяц.",
+"effects": [
+{
+"type": "ability_bonus",
+"ability": "int",
+"value": 1
+}
+],
+"book": "Player's Handbook"
+},
+{
+"id": "phb-feat-lightly-armored",
+"name": "Легкобронированный",
+"description": "+1 к Силе или Ловкости. Владение лёгкими доспехами.",
+"effects": [
+{
+"type": "ability_choice",
+"id": "feat.lightly-armored.asi",
+"pick": 1,
+"value": 1,
+"from": [
+"str",
+"dex"
+]
+},
+{
+"type": "proficiency",
+"kind": "armor",
+"ids": [
+"light"
+]
+}
+],
+"book": "Player's Handbook"
+},
+{
+"id": "phb-feat-linguist",
+"name": "Лингвист",
+"description": "+1 к Интеллекту. Три языка на выбор; можете создавать шифры, которые другие разгадают только с проверкой Интеллекта.",
+"effects": [
+{
+"type": "ability_bonus",
+"ability": "int",
+"value": 1
+},
+{
+"type": "choice",
+"id": "feat.linguist.languages",
+"kind": "language",
+"pick": 3,
+"of": "any"
+}
+],
+"book": "Player's Handbook"
+},
+{
+"id": "phb-feat-lucky",
+"name": "Везунчик",
+"description": "Три очка удачи на день: потратив одно, бросаете дополнительную к20 на атаку, проверку или спасбросок (свою или атаку по вам) и выбираете результат.",
+"effects": [
+{
+"type": "resource",
+"id": "lucky",
+"name": "Очки удачи",
+"max": 3,
+"recharge": "long"
+}
+],
+"book": "Player's Handbook"
+},
+{
+"id": "phb-feat-mage-slayer",
+"name": "Убийца магов",
+"description": "Когда существо рядом накладывает заклинание, реакцией атакуете его. Ваши попадания дают помеху на спасброски концентрации, а от заклинаний существ рядом у вас преимущество на спасброски.",
+"effects": [],
+"book": "Player's Handbook"
+},
+{
+"id": "phb-feat-magic-initiate",
+"name": "Посвящённый в магию",
+"description": "Выберите класс (бард, волшебник, друид, жрец, колдун или чародей): два его заговора и одно заклинание 1 круга, которое можно наложить раз за продолжительный отдых.",
+"effects": [
+{
+"type": "resource",
+"id": "magic-initiate",
+"name": "Заклинание 1 круга",
+"max": 1,
+"recharge": "long"
+}
+],
+"book": "Player's Handbook"
+},
+{
+"id": "phb-feat-martial-adept",
+"name": "Знаток боевых приёмов",
+"description": "Два приёма мастера боевых искусств и одна кость превосходства к6, восстанавливается после отдыха.",
+"effects": [
+{
+"type": "resource",
+"id": "martial-adept",
+"name": "Кость превосходства (к6)",
+"max": 1,
+"recharge": "short"
+}
+],
+"book": "Player's Handbook"
+},
+{
+"id": "phb-feat-medium-armor-master",
+"name": "Мастер средних доспехов",
+"description": "Средние доспехи не дают помехи Скрытности, а к КД в них можно добавлять до +3 от Ловкости вместо +2.",
+"effects": [],
+"book": "Player's Handbook",
+"prerequisite": "Владение средними доспехами"
+},
+{
+"id": "phb-feat-mobile",
+"name": "Подвижный",
+"description": "+10 футов к скорости. Рывок по труднопроходимой местности не замедляет; после рукопашной атаки по существу вы до конца хода не провоцируете от него атак.",
+"effects": [
+{
+"type": "speed",
+"walk": 10
+}
+],
+"book": "Player's Handbook"
+},
+{
+"id": "phb-feat-moderately-armored",
+"name": "Среднебронированный",
+"description": "+1 к Силе или Ловкости. Владение средними доспехами и щитами.",
+"effects": [
+{
+"type": "ability_choice",
+"id": "feat.moderately-armored.asi",
+"pick": 1,
+"value": 1,
+"from": [
+"str",
+"dex"
+]
+},
+{
+"type": "proficiency",
+"kind": "armor",
+"ids": [
+"medium",
+"shield"
+]
+}
+],
+"book": "Player's Handbook",
+"prerequisite": "Владение лёгкими доспехами"
+},
+{
+"id": "phb-feat-mounted-combatant",
+"name": "Верховой боец",
+"description": "Преимущество на рукопашные атаки по пешим существам меньше скакуна; можете перенаправить атаку со скакуна на себя; скакун при успешном спасброске Ловкости не получает урона.",
+"effects": [],
+"book": "Player's Handbook"
+},
+{
+"id": "phb-feat-observant",
+"name": "Наблюдательный",
+"description": "+1 к Интеллекту или Мудрости. Читаете по губам; +5 к пассивным Восприятию и Анализу.",
+"effects": [
+{
+"type": "ability_choice",
+"id": "feat.observant.asi",
+"pick": 1,
+"value": 1,
+"from": [
+"int",
+"wis"
+]
+}
+],
+"book": "Player's Handbook"
+},
+{
+"id": "phb-feat-polearm-master",
+"name": "Мастер древкового оружия",
+"description": "Атакуя алебардой, глефой, боевым посохом или копьём, бонусным действием бьёте тупым концом (1к4 дробящего). Существа, входящие в вашу досягаемость, провоцируют атаку.",
+"effects": [],
+"book": "Player's Handbook"
+},
+{
+"id": "phb-feat-resilient",
+"name": "Устойчивый",
+"description": "+1 к одной характеристике и владение спасбросками этой же характеристики.",
+"effects": [
+{
+"type": "ability_choice",
+"id": "feat.resilient.asi",
+"pick": 1,
+"value": 1,
+"from": [
+"str",
+"dex",
+"con",
+"int",
+"wis",
+"cha"
+]
+},
+{
+"type": "choice",
+"id": "feat.resilient.save",
+"kind": "save",
+"pick": 1,
+"of": [
+"str",
+"dex",
+"con",
+"int",
+"wis",
+"cha"
+]
+}
+],
+"book": "Player's Handbook"
+},
+{
+"id": "phb-feat-ritual-caster",
+"name": "Ритуальный заклинатель",
+"description": "Книга ритуалов с двумя ритуалами 1 круга выбранного класса; найденные ритуалы можно переписывать в неё.",
+"effects": [],
+"book": "Player's Handbook",
+"prerequisite": "Интеллект или Мудрость 13"
+},
+{
+"id": "phb-feat-savage-attacker",
+"name": "Свирепый атакующий",
+"description": "Раз в ход можете перебросить кости урона рукопашной атаки оружием и выбрать любой результат.",
+"effects": [],
+"book": "Player's Handbook"
+},
+{
+"id": "phb-feat-sentinel",
+"name": "Страж",
+"description": "Ваши атаки по возможности останавливают цель; отход не спасает от них; когда существо рядом атакует не вас, реакцией атакуете его.",
+"effects": [],
+"book": "Player's Handbook"
+},
+{
+"id": "phb-feat-sharpshooter",
+"name": "Меткий стрелок",
+"description": "Дальние дистанции без помехи, укрытия на половину и три четверти не мешают. Перед выстрелом можно взять −5 к попаданию ради +10 к урону.",
+"effects": [],
+"book": "Player's Handbook"
+},
+{
+"id": "phb-feat-shield-master",
+"name": "Мастер щита",
+"description": "После атаки бонусным действием толкаете щитом; щит добавляется к спасброскам Ловкости против эффектов по одной цели; при успехе такого спасброска не получаете урона.",
+"effects": [],
+"book": "Player's Handbook"
+},
+{
+"id": "phb-feat-skilled",
+"name": "Одарённый",
+"description": "Владение тремя навыками или инструментами на выбор.",
+"effects": [
+{
+"type": "choice",
+"id": "feat.skilled.skills",
+"kind": "skill",
+"pick": 3,
+"of": "any"
+}
+],
+"book": "Player's Handbook"
+},
+{
+"id": "phb-feat-skulker",
+"name": "Скрытный",
+"description": "Можно прятаться при лёгкой заслонённости; промах по вам из укрытия не выдаёт вас; тусклый свет не мешает Восприятию.",
+"effects": [],
+"book": "Player's Handbook",
+"prerequisite": "Ловкость 13"
+},
+{
+"id": "phb-feat-spell-sniper",
+"name": "Снайпер заклинаний",
+"description": "Дистанция заклинаний с атакой удваивается, они игнорируют укрытия на половину и три четверти. Один заговор с атакой на выбор.",
+"effects": [],
+"book": "Player's Handbook",
+"prerequisite": "Умение накладывать хотя бы одно заклинание"
+},
+{
+"id": "phb-feat-tavern-brawler",
+"name": "Трактирный драчун",
+"description": "+1 к Силе или Телосложению. Владение импровизированным оружием, безоружный удар — к4; после попадания безоружным ударом или импровизированным оружием можно бонусным действием схватить цель.",
+"effects": [
+{
+"type": "ability_choice",
+"id": "feat.tavern-brawler.asi",
+"pick": 1,
+"value": 1,
+"from": [
+"str",
+"con"
+]
+},
+{
+"type": "proficiency",
+"kind": "weapon",
+"ids": [
+"improvised"
+]
+}
+],
+"book": "Player's Handbook"
+},
+{
+"id": "phb-feat-tough",
+"name": "Крепкий",
+"description": "Максимум хитов растёт на 2 за каждый уровень.",
+"effects": [
+{
+"type": "hp_per_level",
+"value": 2
+}
+],
+"book": "Player's Handbook"
+},
+{
+"id": "phb-feat-war-caster",
+"name": "Боевой заклинатель",
+"description": "Преимущество на спасброски концентрации; соматические компоненты можно выполнять с оружием или щитом в руках; атакой по возможности можно наложить заклинание.",
+"effects": [],
+"book": "Player's Handbook",
+"prerequisite": "Умение накладывать хотя бы одно заклинание"
+},
+{
+"id": "phb-feat-weapon-master",
+"name": "Мастер оружия",
+"description": "+1 к Силе или Ловкости. Владение четырьмя видами оружия на выбор (отметьте в конструкторе).",
+"effects": [
+{
+"type": "ability_choice",
+"id": "feat.weapon-master.asi",
+"pick": 1,
+"value": 1,
+"from": [
+"str",
+"dex"
+]
+}
+],
+"book": "Player's Handbook"
+}
+]
