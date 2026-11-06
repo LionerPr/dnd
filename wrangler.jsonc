@@ -1,6 +1,6 @@
 {
   // «Летопись» на Cloudflare: воркер с API, база D1, живые комнаты на Durable Objects, фронтенд — статикой.
-  "name": "letopis",
+  "name": "dnd",
   "main": "apps/server/src/index.ts",
   // Перед выкладкой собирается интерфейс — отдельная команда сборки в Cloudflare не нужна
   "build": { "command": "pnpm --filter @dnd/web build" },
