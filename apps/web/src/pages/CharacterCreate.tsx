@@ -29,12 +29,13 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import type { CharacterView, ContentRow } from '../api/client';
 import { ChoiceRow, ChosenList, optionLabel } from '../components/sheet/Choices';
 import { FeatureList } from '../components/sheet/FeaturesTab';
+import { SpellChooser } from '../components/sheet/SpellChooser';
 import { Empty, Field, Loading, Segmented } from '../components/ui';
 import { bookShort, profName, searchKey, signed } from '../lib/format';
 import { useCharacter, useCommand, useContentItem, useContentList, useSaveBuild } from '../lib/hooks';
 
 type Save = (u: (c: Character) => Character) => void;
-const STEPS = ['Правила', 'Класс', 'Раса и предыстория', 'Характеристики', 'Мастерство', 'Снаряжение', 'Описание'] as const;
+const STEPS = ['Правила', 'Класс', 'Раса и предыстория', 'Характеристики', 'Мастерство', 'Снаряжение', 'Заклинания', 'Описание'] as const;
 
 const STANDARD = [15, 14, 13, 12, 10, 8];
 const POINT_COST: Record<number, number> = { 8: 0, 9: 1, 10: 2, 11: 3, 12: 4, 13: 5, 14: 7, 15: 9 };
@@ -79,7 +80,7 @@ export function CharacterCreatePage() {
   const view = q.data;
   const c = view.data;
   const proficiencyLeft = view.sheet.pendingChoices.length;
-  const done = [!!c.edition, c.classes.length > 0, !!c.raceId, true, proficiencyLeft === 0, !!c.choices['kit.done'], true];
+  const done = [!!c.edition, c.classes.length > 0, !!c.raceId, true, proficiencyLeft === 0, !!c.choices['kit.done'], c.spellsKnown.length > 0 || !view.sheet.casters.length, true];
   const canNext = step === 1 ? done[1] : step === 2 ? done[2] : true;
 
   return (
@@ -109,7 +110,8 @@ export function CharacterCreatePage() {
       {step === 3 && <AbilitiesStep view={view} save={save} />}
       {step === 4 && <MasteryStep view={view} save={save} />}
       {step === 5 && <EquipmentStep view={view} save={save} />}
-      {step === 6 && <DescriptionStep view={view} save={save} />}
+      {step === 6 && <SpellsStep view={view} save={save} />}
+      {step === 7 && <DescriptionStep view={view} save={save} />}
 
       <div className="save-bar">
         {step > 0 && (
@@ -656,6 +658,31 @@ function Granted({ sheet }: { sheet: Sheet }) {
         ))}
       </div>
     </section>
+  );
+}
+
+// ---------- Заклинания ----------
+
+function SpellsStep({ view, save }: { view: CharacterView; save: Save }) {
+  const { data: c, sheet } = view;
+  if (!sheet.casters.length)
+    return (
+      <div className="stack-lg">
+        <h2 className="step-title">Заклинания</h2>
+        <Empty title="Этому классу заклинания не нужны">Если позже появятся заклинания от черты или подкласса, их можно добавить на вкладке «Заклинания» листа.</Empty>
+      </div>
+    );
+  return (
+    <div className="stack-lg">
+      <div>
+        <h2 className="step-title">Заклинания</h2>
+        <p className="muted small">
+          Здесь только заклинания вашего класса и только тех кругов, которые доступны на этом уровне. Счётчики показывают, сколько ещё можно взять.
+          Нажмите на название, чтобы прочитать описание. Что-то сверх правил можно попросить у мастера на вкладке «Заклинания» листа.
+        </p>
+      </div>
+      <SpellChooser data={c} sheet={sheet} update={save} />
+    </div>
   );
 }
 

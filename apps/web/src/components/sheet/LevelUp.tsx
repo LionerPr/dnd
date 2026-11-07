@@ -7,6 +7,7 @@ import { signed } from '../../lib/format';
 import { useContentItem, useContentList } from '../../lib/hooks';
 import { Modal, NumberInput, Segmented, Spinner } from '../ui';
 import { ChoiceRow } from './Choices';
+import { SpellChooser } from './SpellChooser';
 import { FeatureList } from './FeaturesTab';
 
 type HpMode = 'average' | 'roll' | 'manual';
@@ -223,6 +224,15 @@ export function LevelUpModal({ view, onClose, onSave }: { view: CharacterView; o
               <ChoiceRow key={p.id} p={p} sheet={after} data={draft} update={update} />
             ))}
           </div>
+        </section>
+      )}
+
+      {/* Заклинания: новые по таблице класса */}
+      {after && after.casters.some((x) => x.cantripsMax || x.spellsMax !== undefined || x.bookMax !== undefined) && (
+        <section className="lu-section">
+          <h4>Заклинания</h4>
+          <p className="small muted" style={{ marginTop: -4 }}>Счётчики уже посчитаны для нового уровня. Можно заменить одно из старых: уберите его и возьмите другое.</p>
+          <SpellChooser data={draft} sheet={after} update={update} compact />
         </section>
       )}
 

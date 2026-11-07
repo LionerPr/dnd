@@ -123,7 +123,12 @@ interface EffectWithLevel {
 
 function collectEffects(c: Character, content: ContentIndex, features: SourcedFeature[]): EffectWithLevel[] {
   const effects: EffectWithLevel[] = [];
-  for (const f of features) for (const e of f.effects ?? []) effects.push({ effect: e, sourceLevel: f.sourceLevel });
+  for (const f of features) {
+    for (const e of f.effects ?? []) effects.push({ effect: e, sourceLevel: f.sourceLevel });
+    // Эффекты выбранных частей умения («Защитник» божественного порядка даёт тяжёлые доспехи)
+    const picked = c.choices[`part.${f.id}`];
+    if (picked?.length) for (const part of f.parts ?? []) if (picked.includes(part.name)) for (const e of part.effects ?? []) effects.push({ effect: e, sourceLevel: f.sourceLevel });
+  }
   for (const inv of c.inventory) {
     const item = inv.itemId ? content.items.get(inv.itemId) : undefined;
     if (item?.effects && itemEffectsActive(item, !!inv.equipped, !!inv.attuned)) {
@@ -203,6 +208,19 @@ export interface CasterInfo {
   saveDc: number;
   attackBonus: number;
   mode: Spellcasting['mode'];
+  /** Уровень в этом классе */
+  classLevel: number;
+  /** Сколько можно знать заговоров (undefined — класс без заговоров или неизвестно) */
+  cantripsMax?: number;
+  /** Сколько заклинаний 1+ круга: известных (known) или подготовленных (prepared) */
+  spellsMax?: number;
+  /** Волшебник: сколько заклинаний в книге */
+  bookMax?: number;
+  /** Самый высокий круг, который доступен этому классу */
+  maxSpellLevel: number;
+  /** Колдун: круги мистического арканума (по одному заклинанию 6–9 круга, вне лимита) */
+  arcanum?: number[];
+  edition: Edition;
 }
 
 export interface ResourceValue {
@@ -251,11 +269,64 @@ export interface Sheet {
   grants: { kind: ProficiencyKind; id: string; origin: string; from: FeatureFrom }[];
 }
 
+/** Таблицы 2014 для классов без колонок «Известные заговоры/заклинания» (по названию класса) */
+const LIMITS_2014: Record<string, { cantrips?: number[]; known?: number[]; prepared?: 'full' | 'half'; book?: boolean }> = {
+  'жрец': { cantrips: [0, 3, 3, 3, 4, 4, 4, 4, 4, 4, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5], prepared: 'full' },
+  'друид': { cantrips: [0, 2, 2, 2, 3, 3, 3, 3, 3, 3, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4], prepared: 'full' },
+  'волшебник': { cantrips: [0, 3, 3, 3, 4, 4, 4, 4, 4, 4, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5], prepared: 'full', book: true },
+  'паладин': { prepared: 'half' },
+  'изобретатель': { cantrips: [0, 2, 2, 2, 2, 2, 2, 2, 2, 2, 3, 3, 3, 3, 4, 4, 4, 4, 4, 4, 4], prepared: 'half' },
+  'бард': { cantrips: [0, 2, 2, 2, 3, 3, 3, 3, 3, 3, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4], known: [0, 4, 5, 6, 7, 8, 9, 10, 11, 12, 14, 15, 15, 16, 18, 19, 19, 20, 22, 22, 22] },
+  'чародей': { cantrips: [0, 4, 4, 4, 5, 5, 5, 5, 5, 5, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6], known: [0, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 12, 13, 13, 14, 14, 15, 15, 15, 15] },
+  'колдун': { cantrips: [0, 2, 2, 2, 3, 3, 3, 3, 3, 3, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4], known: [0, 2, 3, 4, 5, 6, 7, 8, 9, 10, 10, 11, 11, 12, 12, 13, 13, 14, 14, 15, 15] },
+  'следопыт': { known: [0, 0, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9, 10, 10, 11, 11] },
+};
+/** Мистический рыцарь и мистический ловкач: заговоры и известные заклинания с 3 уровня */
+const THIRD_CANTRIPS = [0, 0, 0, 2, 2, 2, 2, 2, 2, 2, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3];
+const THIRD_KNOWN = [0, 0, 0, 3, 4, 4, 4, 5, 6, 6, 7, 8, 8, 9, 10, 10, 11, 11, 11, 12, 13];
+
+/** Сколько заговоров и заклинаний положено классу на его уровне */
+function spellLimits(cls: CharacterClass, sc: Spellcasting, lvl: number, abilityMod: number): { cantripsMax?: number; spellsMax?: number; bookMax?: number } {
+  const at = (arr: number[] | undefined) => (arr ? arr[Math.min(lvl, arr.length - 1)] : undefined);
+  const out: { cantripsMax?: number; spellsMax?: number; bookMax?: number } = {};
+  // 1) Таблицы в самом классе (SRD 5.2)
+  if (sc.cantrips || sc.spells) {
+    out.cantripsMax = at(sc.cantrips) || undefined;
+    out.spellsMax = at(sc.spells);
+    if (sc.book) out.bookMax = sc.book.first + sc.book.perLevel * (lvl - 1);
+    return out;
+  }
+  // 2) Колонки таблицы класса с dnd.su
+  const col = (re: RegExp) => {
+    const rows = cls.levels.filter((l) => l.level <= lvl).sort((a, b) => b.level - a.level);
+    for (const r of rows) {
+      const k = Object.keys(r.columns ?? {}).find((x) => re.test(x));
+      if (k) {
+        const n = Number(r.columns![k]!.match(/\d+/)?.[0]);
+        return Number.isFinite(n) ? n : 0;
+      }
+    }
+    return undefined;
+  };
+  const t = LIMITS_2014[cls.name.toLowerCase()];
+  const third = sc.progression === 'third';
+  out.cantripsMax = col(/заговор/i) ?? at(t?.cantrips) ?? (third ? at(THIRD_CANTRIPS) : undefined);
+  out.spellsMax = col(/известн\S* заклинан/i) ?? at(t?.known) ?? (third ? at(THIRD_KNOWN) : undefined);
+  if (out.spellsMax === undefined && t?.prepared) {
+    const base = t.prepared === 'full' ? lvl : Math.floor(lvl / 2);
+    out.spellsMax = base > 0 ? Math.max(1, abilityMod + base) : 0;
+  }
+  if (t?.book) out.bookMax = 6 + 2 * (lvl - 1);
+  if (!out.cantripsMax) delete out.cantripsMax;
+  return out;
+}
+
 function casterLevelFor(cls: CharacterClass, entryLevel: number, subclassCasting: Spellcasting | undefined, multiclass: boolean) {
   const sc = cls.spellcasting ?? subclassCasting;
   if (!sc || sc.progression === 'pact') return 0;
   if (sc.progression === 'full') return entryLevel;
-  if (sc.progression === 'half') return multiclass ? Math.floor(entryLevel / 2) : entryLevel < 2 ? 0 : Math.ceil(entryLevel / 2);
+  // В 2024 паладин и следопыт колдуют с 1 уровня
+  if (sc.progression === 'half') return multiclass ? Math.floor(entryLevel / 2) : entryLevel < (editionOf(cls) === '2024' ? 1 : 2) ? 0 : Math.ceil(entryLevel / 2);
   return multiclass ? Math.floor(entryLevel / 3) : entryLevel < 3 ? 0 : Math.ceil(entryLevel / 3);
 }
 
@@ -505,6 +576,9 @@ export function computeSheet(c: Character, content: ContentIndex): Sheet {
     if (!sc) continue;
     if (sc.progression === 'pact') warlockLevel += entry.level;
     else casterLevel += casterLevelFor(cls, entry.level, sub?.spellcasting, multiclass);
+    const ownSlots = sc.progression === 'pact' ? null : FULL_CASTER_SLOTS[Math.min(casterLevelFor(cls, entry.level, sub?.spellcasting, false), 20)] ?? [];
+    const maxSpellLevel = sc.progression === 'pact' ? (PACT_SLOTS[Math.min(entry.level, 20)]?.[1] ?? 0) : ownSlots!.filter((n) => n > 0).length;
+    const limits = spellLimits(cls, sc, entry.level, mod(sc.ability));
     casters.push({
       classId: cls.id,
       className: cls.name,
@@ -512,7 +586,20 @@ export function computeSheet(c: Character, content: ContentIndex): Sheet {
       saveDc: ov(`spellDc.${cls.id}`, 8 + pb + mod(sc.ability)),
       attackBonus: ov(`spellAttack.${cls.id}`, pb + mod(sc.ability)),
       mode: sc.mode,
+      classLevel: entry.level,
+      maxSpellLevel,
+      edition: editionOf(cls),
+      ...limits,
+      ...(sc.progression === 'pact' && entry.level >= 11 ? { arcanum: [[11, 6], [13, 7], [15, 8], [17, 9]].filter(([l]) => entry.level >= l!).map(([, s]) => s!) } : {}),
     });
+  }
+  // Бонусы к числу заговоров и заклинаний от умений — первому заклинателю
+  if (casters[0]) {
+    for (const { effect: e } of effects) {
+      if (e.type !== 'spell_bonus') continue;
+      if (e.cantrips) casters[0].cantripsMax = (casters[0].cantripsMax ?? 0) + e.cantrips;
+      if (e.spells && casters[0].spellsMax !== undefined) casters[0].spellsMax += e.spells;
+    }
   }
   const slotRow = FULL_CASTER_SLOTS[Math.min(casterLevel, 20)] ?? [];
   const spellSlots = slotRow.map((max, i) => ({ level: i + 1, max, used: Math.min(max, c.state.spellSlotsUsed[i + 1] ?? 0) }));

@@ -26,6 +26,8 @@ export type Effect =
   /** Бонус по формуле: «[PROF]» к инициативе, «[LVL]» к хитам. Переменные: [LVL] (уровень класса), [PROF], [STR]…[CHA] (модификаторы) */
   | { type: 'formula_bonus'; target: 'initiative' | 'hp' | 'ac'; expr: string }
   /** maxExpr — максимум по формуле («max([CHA],1)», «5*[LVL]»); если задан, важнее max */
+  /** Дополнительные заговоры или заклинания сверх таблицы класса («Чудотворец», «Ведун») */
+  | { type: 'spell_bonus'; cantrips?: number; spells?: number }
   | { type: 'resource'; id: string; name: string; max: number | Partial<Record<number, number>>; maxExpr?: string; recharge: 'short' | 'long' | 'none' };
 
 /** Число, растущее с уровнем класса: { 3: 2, 10: 3, 17: 4 } — с 3-го уровня 2, с 10-го 3… */
@@ -39,6 +41,8 @@ export interface FeaturePart {
   optional?: boolean;
   /** Доступно с этого уровня класса */
   minLevel?: number;
+  /** Эффекты, которые действуют, только если эта часть выбрана */
+  effects?: Effect[];
 }
 
 export interface Feature {
@@ -111,6 +115,12 @@ export interface Spellcasting {
   /** prepared — готовит из списка класса; known — знает фиксированное число */
   mode: 'prepared' | 'known';
   ritual?: boolean;
+  /** Сколько заговоров знает персонаж, по уровню класса (индекс — уровень, 0 не используется) */
+  cantrips?: number[];
+  /** Сколько заклинаний 1+ круга: известных или подготовленных, по уровню класса */
+  spells?: number[];
+  /** Книга заклинаний волшебника: сколько в ней на 1 уровне и сколько прибавляется за уровень */
+  book?: { first: number; perLevel: number };
 }
 
 export interface CharacterClass extends ContentMeta {
@@ -287,6 +297,10 @@ export interface Character {
   /** id заклинаний: известные и подготовленные */
   spellsKnown: string[];
   spellsPrepared: string[];
+  /** Заклинания сверх правил класса, одобренные мастером: не считаются в лимит */
+  spellsBonus?: string[];
+  /** Просьбы добавить заклинание вне списка или лимита: ждут решения мастера */
+  spellRequests?: string[];
   inventory: InventoryEntry[];
   /** Включённые опциональные умения (id) */
   optionalFeatures: string[];

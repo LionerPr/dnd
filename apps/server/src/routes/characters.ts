@@ -70,6 +70,11 @@ export function characterRoutes(api: Api, deps: AppDeps) {
       if (!access.canEdit) throw forbidden('Это не ваш персонаж');
       const before = row.data;
       const incoming = { ...(body.data as unknown as Character), id: row.id, state: before.state };
+      // Заклинания сверх правил одобряет только мастер (у героя без кампании решает владелец)
+      if (row.campaign_id && !access.dm) {
+        const allowed = new Set(before.spellsBonus ?? []);
+        incoming.spellsBonus = (incoming.spellsBonus ?? []).filter((id) => allowed.has(id));
+      }
       // Хиты: если персонаж был «полон», остаётся полным при росте максимума; иначе ограничиваем новым максимумом
       const index = await contentIndexFor(tx, [before, incoming]);
       const oldMax = computeSheet(before, index).maxHp;

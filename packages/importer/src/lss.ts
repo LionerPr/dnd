@@ -5,6 +5,8 @@
  */
 import type { Ability, Background, CharacterClass, DamageType, Edition, Effect, Feature, Race, Skill, Subclass } from '@dnd/rules-engine';
 
+import { applySrd24Extras } from './srd24-extras.js';
+
 type G = { type: string; [k: string]: any };
 interface Dataset {
   id: string;
@@ -211,7 +213,7 @@ export function fromLssDataset(d: Dataset, prefix: string) {
       skillChoices: { pick: skills?.count ?? 2, from: (skills?.options === 'any' ? Object.values(SKILL_EN) : (skills?.options ?? []).map(skill)) as Skill[] },
       ...(kitGrant ? { kit: kitGrant.options.map((o: { label: string; grants: G[] }) => ({ label: o.label, items: itemsOf(o.grants), gold: goldOf(o.grants) })) } : {}),
       ...(c.info ? { hint: { main: c.info.primaryStats ?? [], complexity: c.info.complexity ?? 1 } } : {}),
-      ...(sc ? { spellcasting: { ability: sc.ability, progression: sc.progression, mode: sc.casterType === 'memory' ? 'known' : 'prepared', ...(sc.casterType === 'book' ? { ritual: true } : {}) } } : {}),
+      ...(sc ? { spellcasting: { ability: sc.ability, progression: sc.progression, mode: sc.casterType === 'memory' ? 'known' : 'prepared', ...(sc.casterType === 'book' ? { ritual: true, book: { first: sc.bookAtFirst ?? 6, perLevel: sc.bookPerLevel ?? 2 } } : {}), ...(sc.cantripsByLevel ? { cantrips: sc.cantripsByLevel } : {}), ...(sc.knownByLevel ? { spells: sc.knownByLevel } : {}) } } : {}),
       features,
       levels: [],
       subclassLevel: c.subclassLevel,
@@ -271,5 +273,6 @@ export function fromLssDataset(d: Dataset, prefix: string) {
     } satisfies Background;
   });
 
+  if (edition === '2024') applySrd24Extras(classes);
   return { classes, races, feats, backgrounds, license: `${d.name} — ${d.license}` };
 }

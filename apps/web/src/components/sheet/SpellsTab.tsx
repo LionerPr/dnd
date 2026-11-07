@@ -1,12 +1,21 @@
 import type { Character, Spell } from '@dnd/rules-engine';
 import { useQuery } from '@tanstack/react-query';
-import { Plus, Trash2, Wand2 } from 'lucide-react';
-import { useState } from 'react';
+import { Plus, ShieldQuestion, Trash2, Wand2 } from 'lucide-react';
+import { useMemo, useState } from 'react';
 import { api, type CharacterView, type Command, type ContentRow } from '../../api/client';
 import { levelName, schoolName, signed } from '../../lib/format';
 import { ContentPicker } from '../ContentPicker';
 import { Empty, Modal } from '../ui';
 import { Trackers } from './CombatTab';
+import { countSpells, SpellChooser, useEditionSpells } from './SpellChooser';
+
+function Limit({ n, max, label }: { n: number; max: number; label: string }) {
+  return (
+    <span className={`sc-count ${n > max ? 'over' : n === max ? 'full' : 'left'}`}>
+      {label} <b>{n}</b>/{max}
+    </span>
+  );
+}
 
 type Roll = (formula: string, label: string) => unknown;
 
@@ -57,23 +66,23 @@ export function SpellCard({ spell }: { spell: Spell }) {
   );
 }
 
-// Заклинания 2014 у персонажа 2024 (если нет версии 2024) — сверяем класс по названию: «волшебник» = srd24-class-wizard
-const SRD24_CLASS_NAMES: Record<string, string> = {
-  bard: 'бард', cleric: 'жрец', druid: 'друид', paladin: 'паладин', ranger: 'следопыт', sorcerer: 'чародей', warlock: 'колдун', wizard: 'волшебник',
-};
-function sameClassByName(names: string[] | undefined, classIds: string[]) {
-  const wanted = classIds.map((id) => SRD24_CLASS_NAMES[id.replace(/^srd24-class-/, '')]).filter(Boolean);
-  return !!names?.some((n) => wanted.includes(n.toLowerCase()));
-}
-
 export function SpellsTab({ view, canEdit, cmd, roll, save }: { view: CharacterView; canEdit: boolean; cmd: (c: Command) => void; roll: Roll; save: (u: (c: Character) => Character) => void }) {
   const { data: c, sheet } = view;
   const [picker, setPicker] = useState(false);
+  const [chooser, setChooser] = useState(false);
   const [open, setOpen] = useState<Spell | null>(null);
   const [slotLevel, setSlotLevel] = useState(1);
-  const [onlyClass, setOnlyClass] = useState(true);
-  const classIds = c.classes.map((x) => x.classId);
-  const ids = c.spellsKnown;
+  const judge = !!view.access?.dm || !view.campaignId;
+  const requests = c.spellRequests ?? [];
+  const bonus = new Set(c.spellsBonus ?? []);
+  const ed = c.edition ?? '2014';
+  const editionSpells = useEditionSpells(ed);
+  const counts = useMemo(() => countSpells(c, sheet, editionSpells.rows), [c, sheet, editionSpells.rows]);
+  const outside = new Set(counts.outside.map((r) => r.id));
+  const bookCaster = counts.per.find((p) => p.book);
+  const preparedCount = c.spellsPrepared.filter((id) => c.spellsKnown.includes(id)).length;
+  const ids = [...new Set([...c.spellsKnown, ...requests])];
+  const known = new Set(c.spellsKnown);
   const q = useQuery({
     queryKey: ['batch', ids.join(',')],
     queryFn: () => api<{ items: ContentRow[] }>(`/content/batch?ids=${ids.join(',')}`),
@@ -81,8 +90,12 @@ export function SpellsTab({ view, canEdit, cmd, roll, save }: { view: CharacterV
   });
   const spells = (q.data?.items ?? []).map((r) => r.data as Spell).sort((a, b) => a.level - b.level || a.name.localeCompare(b.name));
   const byLevel = new Map<number, Spell[]>();
-  for (const s of spells) byLevel.set(s.level, [...(byLevel.get(s.level) ?? []), s]);
-  const prepares = sheet.casters.some((x) => x.mode === 'prepared');
+  for (const s of spells) if (known.has(s.id)) byLevel.set(s.level, [...(byLevel.get(s.level) ?? []), s]);
+  // Отмечать подготовленные нужно только волшебнику: остальные готовят всё, что взяли
+  const prepares = !!bookCaster;
+  const approve = (id: string) => save((d) => ({ ...d, spellRequests: (d.spellRequests ?? []).filter((x) => x !== id), spellsKnown: d.spellsKnown.includes(id) ? d.spellsKnown : [...d.spellsKnown, id], spellsBonus: [...new Set([...(d.spellsBonus ?? []), id])] }));
+  const reject = (id: string) => save((d) => ({ ...d, spellRequests: (d.spellRequests ?? []).filter((x) => x !== id) }));
+
   const caster = sheet.casters[0];
   const slotFor = (lvl: number) => sheet.spellSlots.find((s) => s.level === lvl);
   const pactOk = (lvl: number) => sheet.pactSlots && sheet.pactSlots.level >= lvl && sheet.pactSlots.used < sheet.pactSlots.max;
@@ -110,15 +123,54 @@ export function SpellsTab({ view, canEdit, cmd, roll, save }: { view: CharacterV
               </span>
             )}
             {canEdit && (
-              <button className="btn sm" onClick={() => setPicker(true)}>
-                <Plus /> Добавить
+              <button className="btn sm accent" onClick={() => setChooser(true)}>
+                <Plus /> Выбрать по правилам
+              </button>
+            )}
+            {(canEdit || judge) && (
+              <button className="btn sm" onClick={() => setPicker(true)} title={judge ? 'Любое заклинание, не считается в лимит' : 'Мастер увидит просьбу и решит'}>
+                <ShieldQuestion /> {judge ? 'Сверх правил' : 'Попросить у мастера'}
               </button>
             )}
           </div>
         </div>
-        {ids.length === 0 ? (
+        {counts.per.some((p) => p.caster.cantripsMax || p.spellsCap !== undefined) && (
+          <div className="spell-limits">
+            {counts.per.map((p) => (
+              <span key={p.caster.classId} className="row wrap" style={{ gap: 8 }}>
+                {counts.per.length > 1 && <b className="small">{p.caster.className}:</b>}
+                {p.caster.cantripsMax ? <Limit n={p.cantrips.length} max={p.caster.cantripsMax} label="заговоры" /> : null}
+                {p.spellsCap !== undefined && <Limit n={p.spells.length} max={p.spellsCap} label={p.book ? 'в книге' : 'заклинания'} />}
+                {p.book && p.caster.spellsMax !== undefined && <Limit n={preparedCount} max={p.caster.spellsMax} label="подготовлено" />}
+              </span>
+            ))}
+            {bonus.size > 0 && <span className="small muted">+ {bonus.size} от мастера</span>}
+          </div>
+        )}
+        {requests.length > 0 && (
+          <div className="spell-requests">
+            <b className="small">{judge ? 'Просьбы игрока — решите:' : 'Ждут решения мастера:'}</b>
+            {requests.map((id) => {
+              const sp = spells.find((x) => x.id === id);
+              return (
+                <span key={id} className="chip">
+                  {sp ? <span className="link" onClick={() => setOpen(sp)}>{sp.name}</span> : '…'}
+                  {judge ? (
+                    <>
+                      <button className="btn xs accent" onClick={() => approve(id)}>Разрешить</button>
+                      <button className="btn xs ghost" onClick={() => reject(id)}>Нет</button>
+                    </>
+                  ) : (
+                    canEdit && <button className="btn xs ghost" onClick={() => reject(id)}>Отозвать</button>
+                  )}
+                </span>
+              );
+            })}
+          </div>
+        )}
+        {c.spellsKnown.length === 0 ? (
           <div className="panel-pad">
-            <Empty title="Заклинаний пока нет">Добавьте их из библиотеки — описания, дистанция и урон подтянутся сами.</Empty>
+            <Empty title="Заклинаний пока нет">Нажмите «Выбрать по правилам»: там только заклинания вашего класса и доступных кругов, а счётчики подскажут, сколько можно взять.</Empty>
           </div>
         ) : (
           [...byLevel].map(([lvl, list]) => (
@@ -140,7 +192,7 @@ export function SpellsTab({ view, canEdit, cmd, roll, save }: { view: CharacterV
                         type="checkbox"
                         title="Подготовлено"
                         checked={prepared}
-                        disabled={!canEdit}
+                        disabled={!canEdit || (!prepared && bookCaster?.caster.spellsMax !== undefined && preparedCount >= bookCaster.caster.spellsMax)}
                         onChange={(e) =>
                           save((d) => ({ ...d, spellsPrepared: e.target.checked ? [...d.spellsPrepared, s.id] : d.spellsPrepared.filter((x) => x !== s.id) }))
                         }
@@ -159,6 +211,8 @@ export function SpellsTab({ view, canEdit, cmd, roll, save }: { view: CharacterV
                       >
                         {s.name}
                       </span>
+                      {bonus.has(s.id) && <span className="tag" title="Мастер разрешил сверх правил">от мастера</span>}
+                      {!bonus.has(s.id) && outside.has(s.id) && <span className="tag warn" title="Нет в списке вашего класса. Попросите мастера одобрить или замените.">вне списка класса</span>}
                       <div className="small muted">
                         {[s.castingTime, s.range, s.concentration && 'концентрация', s.ritual && 'ритуал', s.damage?.dice].filter(Boolean).join(' · ')}
                       </div>
@@ -176,7 +230,7 @@ export function SpellsTab({ view, canEdit, cmd, roll, save }: { view: CharacterV
                         </button>
                       )}
                       {canEdit && (
-                        <button className="btn ghost sm icon" aria-label="Убрать" onClick={() => save((d) => ({ ...d, spellsKnown: d.spellsKnown.filter((x) => x !== s.id), spellsPrepared: d.spellsPrepared.filter((x) => x !== s.id) }))}>
+                        <button className="btn ghost sm icon" aria-label="Убрать" onClick={() => save((d) => ({ ...d, spellsKnown: d.spellsKnown.filter((x) => x !== s.id), spellsPrepared: d.spellsPrepared.filter((x) => x !== s.id), spellsBonus: (d.spellsBonus ?? []).filter((x) => x !== s.id) }))}>
                           <Trash2 />
                         </button>
                       )}
@@ -228,22 +282,26 @@ export function SpellsTab({ view, canEdit, cmd, roll, save }: { view: CharacterV
         </Modal>
       )}
 
+      {chooser && (
+        <Modal title="Заклинания по правилам класса" wide onClose={() => setChooser(false)} footer={<button className="btn accent" onClick={() => setChooser(false)}>Готово</button>}>
+          <SpellChooser data={c} sheet={sheet} update={save} />
+        </Modal>
+      )}
+
       {picker && (
         <ContentPicker
           kind="spell"
-          title="Добавить заклинание"
+          title={judge ? 'Заклинание сверх правил (не считается в лимит)' : 'Попросить у мастера заклинание'}
           keepOpen
-          edition={c.edition ?? '2014'}
-          filter={(r) => !c.spellsKnown.includes(r.id) && (!onlyClass || !classIds.length || (r.data.classes ?? []).some((id: string) => classIds.includes(id)) || sameClassByName(r.data.classNames, classIds))}
-          toolbar={
-            classIds.length > 0 && (
-              <label className="check small nowrap">
-                <input type="checkbox" checked={onlyClass} onChange={(e) => setOnlyClass(e.target.checked)} /> только мой класс
-              </label>
-            )
-          }
+          edition={ed}
+          filter={(r) => !c.spellsKnown.includes(r.id) && !requests.includes(r.id)}
+          toolbar={<span className="small muted nowrap">{judge ? 'добавится сразу' : 'мастер разрешит или откажет'}</span>}
           onClose={() => setPicker(false)}
-          onPick={(row) => row && save((d) => ({ ...d, spellsKnown: [...d.spellsKnown, row.id] }))}
+          onPick={(row) => {
+            if (!row) return;
+            if (judge) approve(row.id);
+            else save((d) => ({ ...d, spellRequests: [...new Set([...(d.spellRequests ?? []), row.id])] }));
+          }}
         />
       )}
     </div>

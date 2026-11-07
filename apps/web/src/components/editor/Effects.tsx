@@ -23,6 +23,7 @@ export const EFFECT_LABELS: Record<Effect['type'], string> = {
   ac_formula: 'КД без доспехов',
   initiative_bonus: 'Бонус к инициативе',
   formula_bonus: 'Бонус по формуле',
+  spell_bonus: 'Доп. заговоры и заклинания',
   resource: 'Ресурс (заряды)',
 };
 
@@ -45,6 +46,7 @@ function blank(type: Effect['type']): Effect {
     case 'ac_formula': return { type, base: 10, abilities: ['dex'], allowShield: true };
     case 'initiative_bonus': return { type, value: 1 };
     case 'formula_bonus': return { type, target: 'initiative', expr: '[PROF]' };
+    case 'spell_bonus': return { type, cantrips: 1 };
     case 'resource': return { type, id: uid(), name: '', max: 1, recharge: 'long' };
   }
 }
@@ -179,6 +181,13 @@ function EffectBody({ e, set }: { e: Effect; set: (e: Effect) => void }): ReactN
             </label>
           </div>
           <ChipSet options={abilityNames} value={e.abilities} onChange={(abilities) => set({ ...e, abilities: abilities as typeof e.abilities })} />
+        </div>
+      );
+    case 'spell_bonus':
+      return (
+        <div className="row wrap">
+          <Num label="заговоров" value={e.cantrips} onChange={(n) => set({ ...e, cantrips: n })} />
+          <Num label="заклинаний" value={e.spells} onChange={(n) => set({ ...e, spells: n })} />
         </div>
       );
     case 'resource':

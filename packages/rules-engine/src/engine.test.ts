@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import {
   applyDamage,
   kitItems,
@@ -380,5 +382,39 @@ describe('раса 2014 у персонажа 2024', () => {
     const s = computeSheet({ ...torin(), edition: '2024' }, content);
     expect(s.abilities.con.score).toBe(14);
     expect(s.darkvision).toBe(60);
+  });
+});
+
+describe('лимиты заклинаний', () => {
+  const seed = JSON.parse(readFileSync(resolve(import.meta.dirname, '../../../apps/server/src/seed/srd2024.json'), 'utf8')) as CharacterClass[];
+  const classes = new Map(seed.filter((x) => x.kind === 'class').map((x) => [x.id, x]));
+  const idx: ContentIndex = { races: new Map(), classes, spells: new Map(), items: new Map(), feats: new Map() };
+  const hero = (classId: string, level: number, cha = 16): Character => ({
+    ...torin(), edition: '2024', raceId: undefined, subraceId: undefined, classes: [{ classId, level }],
+    baseAbilities: { str: 10, dex: 14, con: 14, int: 16, wis: 14, cha }, choices: {},
+  });
+
+  it('чародей 2024: 4 заговора и 2 заклинания на 1 уровне, на 2 — 4 заклинания и выбор двух метамагий', () => {
+    const s1 = computeSheet(hero('srd24-class-sorcerer', 1), idx);
+    expect(s1.casters[0]).toMatchObject({ cantripsMax: 4, spellsMax: 2, maxSpellLevel: 1 });
+    const s2 = computeSheet(hero('srd24-class-sorcerer', 2), idx);
+    expect(s2.casters[0]).toMatchObject({ spellsMax: 4 });
+    expect(s2.pendingChoices.find((p) => p.id === 'part.sorcerer.metamagic.2')).toMatchObject({ pick: 2, kind: 'feature' });
+  });
+
+  it('волшебник 2024: книга 6 + 2 за уровень, круги по ячейкам', () => {
+    const s = computeSheet(hero('srd24-class-wizard', 3), idx);
+    expect(s.casters[0]).toMatchObject({ cantripsMax: 3, spellsMax: 6, bookMax: 10, maxSpellLevel: 2 });
+  });
+
+  it('паладин 2024 колдует с 1 уровня; колдун 11 — арканум 6 круга', () => {
+    expect(computeSheet(hero('srd24-class-paladin', 1), idx).casters[0]).toMatchObject({ spellsMax: 2, maxSpellLevel: 1 });
+    expect(computeSheet(hero('srd24-class-warlock', 11), idx).casters[0]).toMatchObject({ maxSpellLevel: 5, arcanum: [6] });
+  });
+
+  it('жрец 2024: «Чудотворец» даёт ещё один заговор, «Защитник» — тяжёлые доспехи', () => {
+    const c = hero('srd24-class-cleric', 1);
+    expect(computeSheet({ ...c, choices: { 'part.cleric.divine-order.1': ['Чудотворец'] } }, idx).casters[0]!.cantripsMax).toBe(4);
+    expect(computeSheet({ ...c, choices: { 'part.cleric.divine-order.1': ['Защитник'] } }, idx).proficiencies.armor).toContain('heavy');
   });
 });
