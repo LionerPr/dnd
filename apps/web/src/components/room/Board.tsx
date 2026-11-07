@@ -84,7 +84,7 @@ function BoardCanvas({ campaignId, board, dm, userId, characters, npcs }: { camp
   const [tool, setTool] = useState<Tool>('move');
   const [color, setColor] = useState(COLORS[0]!);
   const [width, setWidth] = useState(WIDTHS[1]!);
-  const [tileColor, setTileColor] = useState<string | null>(TILE_COLORS[0]!.c);
+  const [tileColor, setTileColor] = useState<string>(TILE_COLORS[0]!.c);
   const [brush, setBrush] = useState(1);
   const [view, setView] = useState<View>({ x: 0, y: 0, scale: 0 });
   const [drag, setDrag] = useState<{ id: string; x: number; y: number } | null>(null);
@@ -93,6 +93,8 @@ function BoardCanvas({ campaignId, board, dm, userId, characters, npcs }: { camp
   const [painting, setPainting] = useState<Map<string, [number, number]> | null>(null);
   const lastCell = useRef<[number, number] | null>(null);
   const paintingActive = useRef(false);
+  const [erased, setErased] = useState<Set<string> | null>(null);
+  const cursorRef = useRef<SVGRectElement>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [selItem, setSelItem] = useState<string | null>(null);
   const [editing, setEditing] = useState<string | null>(null);
@@ -108,13 +110,48 @@ function BoardCanvas({ campaignId, board, dm, userId, characters, npcs }: { camp
   const g = board.grid;
 
   // Вписать доску в окно при первом показе и при смене карты
-  const fit = () => {
+  const [stage, setStage] = useState({ w: 0, h: 0 });
+  useEffect(() => {
     const el = wrap.current;
     if (!el) return;
-    const s = Math.min(el.clientWidth / board.width, el.clientHeight / board.height);
-    setView({ scale: s, x: (el.clientWidth - board.width * s) / 2, y: (el.clientHeight - board.height * s) / 2 });
+    const ro = new ResizeObserver(() => setStage({ w: el.clientWidth, h: el.clientHeight }));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  /** Границы всего, что лежит на доске (сетка бесконечная, вписываем содержимое) */
+  const contentBounds = () => {
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    const add = (ax: number, ay: number, bx: number, by: number) => {
+      x0 = Math.min(x0, ax); y0 = Math.min(y0, ay); x1 = Math.max(x1, bx); y1 = Math.max(y1, by);
+    };
+    if (board.mapFileId) add(0, 0, board.width, board.height);
+    for (const k of Object.keys(board.tiles)) {
+      const [x, y] = k.split(',').map(Number) as [number, number];
+      add(x * g, y * g, (x + 1) * g, (y + 1) * g);
+    }
+    for (const it of board.items) add(it.x, it.y, it.x + it.w, it.y + it.h);
+    for (const t of board.tokens) add(t.x - g, t.y - g, t.x + g, t.y + g);
+    for (const st of board.strokes) for (let i = 0; i < st.points.length; i += 2) add(st.points[i]!, st.points[i + 1]!, st.points[i]!, st.points[i + 1]!);
+    return Number.isFinite(x0) ? { x0, y0, x1, y1 } : null;
   };
-  useEffect(fit, [board.mapFileId, board.width, board.height]); // eslint-disable-line react-hooks/exhaustive-deps
+  const fit = () => {
+    const el = wrap.current;
+    if (!el || !el.clientWidth) return;
+    const b = contentBounds();
+    if (!b) return setView({ scale: 1, x: el.clientWidth / 2, y: el.clientHeight / 2 });
+    const pad = g;
+    const w = b.x1 - b.x0 + pad * 2;
+    const h = b.y1 - b.y0 + pad * 2;
+    const s = Math.min(1.5, el.clientWidth / w, el.clientHeight / h);
+    setView({ scale: s, x: (el.clientWidth - w * s) / 2 - (b.x0 - pad) * s, y: (el.clientHeight - h * s) / 2 - (b.y0 - pad) * s });
+  };
+  useEffect(() => {
+    if (stage.w && view.scale === 0) fit();
+  }, [stage.w]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (view.scale) fit();
+  }, [board.mapFileId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const toBoard = (clientX: number, clientY: number) => {
     const r = svg.current!.getBoundingClientRect();
@@ -164,7 +201,7 @@ function BoardCanvas({ campaignId, board, dm, userId, characters, npcs }: { camp
         setUploading(0);
         const f = await uploadFile(campaignId, file, 'image', (p) => setUploading((i + p) / imgs.length));
         const size = f.width && f.height ? { width: f.width, height: f.height } : await imageSize(f.id);
-        const maxW = Math.max(g * 3, board.width * 0.3);
+        const maxW = Math.max(g * 3, (stage.w / (view.scale || 1)) * 0.4);
         const k = Math.min(1, maxW / size.width);
         const w = Math.round(size.width * k);
         const h = Math.round(size.height * k);
@@ -230,6 +267,41 @@ function BoardCanvas({ campaignId, board, dm, userId, characters, npcs }: { camp
     });
   };
 
+  /** Ластик: линии, которых касается квадрат кисти */
+  const eraseStrokesAt = (clientX: number, clientY: number) => {
+    const p = toBoard(clientX, clientY);
+    const r = (brush * g) / 2;
+    const hit: string[] = [];
+    for (const st of board.strokes) {
+      if (!(dm || st.authorId === userId) || erased?.has(st.id)) continue;
+      const rr = r + st.width / 2;
+      const pts = st.points;
+      for (let i = 0; i + 1 < pts.length; i += 2) {
+        const ax = pts[i]!, ay = pts[i + 1]!;
+        const bx = pts[i + 2] ?? ax, by = pts[i + 3] ?? ay;
+        const dx = bx - ax, dy = by - ay;
+        const t = dx || dy ? Math.max(0, Math.min(1, ((p.x - ax) * dx + (p.y - ay) * dy) / (dx * dx + dy * dy))) : 0;
+        const qx = ax + t * dx - p.x, qy = ay + t * dy - p.y;
+        if (qx * qx + qy * qy <= rr * rr) {
+          hit.push(st.id);
+          break;
+        }
+      }
+    }
+    if (hit.length) setErased((prev) => new Set([...(prev ?? []), ...hit]));
+  };
+
+  /** Рамка кисти под указателем — двигаем напрямую, без перерисовки доски */
+  const moveCursor = (clientX: number, clientY: number) => {
+    const el = cursorRef.current;
+    if (!el) return;
+    const [cx, cy] = cellAt(clientX, clientY);
+    const off = Math.floor((brush - 1) / 2);
+    el.setAttribute('x', String((cx - off) * g));
+    el.setAttribute('y', String((cy - off) * g));
+    el.style.display = '';
+  };
+
   const onDown = (e: React.PointerEvent) => {
     const onBg = e.target === e.currentTarget || !!(e.target as Element).closest('[data-bg]');
     if (e.button === 1 || tool === 'hand' || (tool === 'move' && onBg)) {
@@ -244,10 +316,11 @@ function BoardCanvas({ campaignId, board, dm, userId, characters, npcs }: { camp
       const p = toBoard(e.clientX, e.clientY);
       setDraft([p.x, p.y]);
       (e.currentTarget as Element).setPointerCapture(e.pointerId);
-    } else if (tool === 'tile') {
+    } else if (tool === 'tile' || tool === 'erase') {
       lastCell.current = null;
       paintingActive.current = true;
       paintAt(cellAt(e.clientX, e.clientY));
+      if (tool === 'erase') eraseStrokesAt(e.clientX, e.clientY);
       (e.currentTarget as Element).setPointerCapture(e.pointerId);
     } else if (tool === 'note' || tool === 'text' || tool === 'rect') {
       const p = toBoard(e.clientX, e.clientY);
@@ -273,6 +346,7 @@ function BoardCanvas({ campaignId, board, dm, userId, characters, npcs }: { camp
     }
   };
   const onMove = (e: React.PointerEvent) => {
+    if (tool === 'tile' || tool === 'erase') moveCursor(e.clientX, e.clientY);
     if (pan.current) {
       const p = pan.current;
       setView((v) => ({ ...v, x: p.vx + e.clientX - p.sx, y: p.vy + e.clientY - p.sy }));
@@ -307,7 +381,10 @@ function BoardCanvas({ campaignId, board, dm, userId, characters, npcs }: { camp
       setDraft((d) => (d ? [...d, p.x, p.y] : d));
       return;
     }
-    if (paintingActive.current) paintAt(cellAt(e.clientX, e.clientY));
+    if (paintingActive.current) {
+      paintAt(cellAt(e.clientX, e.clientY));
+      if (tool === 'erase') eraseStrokesAt(e.clientX, e.clientY);
+    }
   };
   const onUp = () => {
     pan.current = null;
@@ -331,12 +408,22 @@ function BoardCanvas({ campaignId, board, dm, userId, characters, npcs }: { camp
     }
     if (paintingActive.current && painting) {
       paintingActive.current = false;
-      const cells = [...painting.values()];
+      const erasing = tool === 'erase';
+      // Ластик шлёт только клетки, где тайлы правда есть
+      const cells = [...painting.values()].filter(([x, y]) => !erasing || board.tiles[`${x},${y}`]);
       lastCell.current = null;
+      if (erasing && erased?.size) {
+        const ids = [...erased];
+        run(ids.map((id) => ({ t: 'stroke-remove', id }))).finally(() => setErased(null));
+      }
+      if (!cells.length) {
+        setPainting(null);
+        return;
+      }
       // Мазок разом; ответ сервера применит тайлы к доске, а черновик держим до него
       const chunks: [number, number][][] = [];
       for (let i = 0; i < cells.length; i += 4000) chunks.push(cells.slice(i, i + 4000));
-      Promise.all(chunks.map((c) => send([{ t: 'tiles', cells: c, color: tileColor }])))
+      Promise.all(chunks.map((c) => send([{ t: 'tiles', cells: c, color: erasing ? null : tileColor }])))
         .catch((e: Error) => toast(e.message, 'error'))
         .finally(() => setPainting(null));
     }
@@ -368,7 +455,7 @@ function BoardCanvas({ campaignId, board, dm, userId, characters, npcs }: { camp
 
   const sel = board.tokens.find((t) => t.id === selected);
   const item = board.items.find((i) => i.id === selItem);
-  const cursor = tool === 'pen' || tool === 'tile' ? 'crosshair' : tool === 'hand' ? 'grab' : tool === 'erase' ? 'cell' : tool === 'move' ? 'default' : 'copy';
+  const cursor = tool === 'pen' || tool === 'tile' ? 'crosshair' : tool === 'hand' ? 'grab' : tool === 'erase' ? 'crosshair' : tool === 'move' ? 'default' : 'copy';
   const itemsInteractive = tool === 'move';
 
   // Тайлы: сохранённые плюс текущий мазок
@@ -377,12 +464,21 @@ function BoardCanvas({ campaignId, board, dm, userId, characters, npcs }: { camp
       const [x, y] = k.split(',').map(Number) as [number, number];
       return { k, x, y, c };
     });
-    if (!painting) return all;
-    const pending = new Set(painting.keys());
-    const rest = all.filter((t) => !pending.has(t.k));
-    if (tileColor) for (const [k, [x, y]] of painting) rest.push({ k, x, y, c: tileColor });
-    return rest;
-  }, [board.tiles, painting, tileColor]);
+    let rest = all;
+    if (painting) {
+      const pending = new Set(painting.keys());
+      rest = all.filter((t) => !pending.has(t.k));
+      if (tool === 'tile' && tileColor) for (const [k, [x, y]] of painting) rest.push({ k, x, y, c: tileColor });
+    }
+    // Одна фигура на цвет: тысячи клеток рисуются быстро
+    const byColor = new Map<string, string[]>();
+    for (const t of rest) {
+      const arr = byColor.get(t.c) ?? [];
+      arr.push(`M${t.x * g} ${t.y * g}h${g}v${g}h${-g}z`);
+      byColor.set(t.c, arr);
+    }
+    return [...byColor].map(([c, d]) => ({ c, d: d.join('') }));
+  }, [board.tiles, painting, tileColor, tool, g]);
 
   const editingItem = board.items.find((i) => i.id === editing);
   const itemBox = (it: BoardItem) => (itemDrag?.id === it.id ? { x: itemDrag.x, y: itemDrag.y, w: itemDrag.w, h: itemDrag.h } : it);
@@ -398,7 +494,7 @@ function BoardCanvas({ campaignId, board, dm, userId, characters, npcs }: { camp
           <div className="seg-tools">
             <button className={`btn sm icon${tool === 'tile' ? ' accent' : ''}`} title="Тайлы: закрашивать клетки" onClick={() => setTool('tile')}><Paintbrush /></button>
             <button className={`btn sm icon${tool === 'pen' ? ' accent' : ''}`} title="Ручка" onClick={() => setTool('pen')}><Pencil /></button>
-            <button className={`btn sm icon${tool === 'erase' ? ' accent' : ''}`} title="Стереть линию (нажмите на неё)" onClick={() => setTool('erase')}><Eraser /></button>
+            <button className={`btn sm icon${tool === 'erase' ? ' accent' : ''}`} title="Ластик: стирает тайлы и линии под кистью" onClick={() => setTool('erase')}><Eraser /></button>
           </div>
         )}
         {canDraw && (
@@ -452,6 +548,26 @@ function BoardCanvas({ campaignId, board, dm, userId, characters, npcs }: { camp
         )}
       </div>
 
+      {tool === 'erase' && (
+        <div className="board-bar small">
+          <span className="muted">Ластик стирает тайлы и линии под рамкой. Размер</span>
+          {[1, 2, 3, 5, 8].map((b) => (
+            <button key={b} className={`btn xs${brush === b ? ' accent' : ''}`} onClick={() => setBrush(b)}>{b}×{b}</button>
+          ))}
+          <div className="grow" />
+          {dm && board.strokes.length > 0 && (
+            <ConfirmButton className="btn ghost xs" confirm="Стереть все линии?" onConfirm={() => run([{ t: 'strokes-clear' }])}>
+              <Trash2 size={14} /> Все линии
+            </ConfirmButton>
+          )}
+          {dm && Object.keys(board.tiles).length > 0 && (
+            <ConfirmButton className="btn ghost xs" confirm="Стереть все тайлы?" onConfirm={() => run([{ t: 'tiles-clear' }])}>
+              <Trash2 size={14} /> Все тайлы
+            </ConfirmButton>
+          )}
+        </div>
+      )}
+
       {tool === 'tile' && (
         <div className="board-bar small">
           <span className="muted">Тайлы:</span>
@@ -459,13 +575,10 @@ function BoardCanvas({ campaignId, board, dm, userId, characters, npcs }: { camp
             <button key={t.c} className={`tile-swatch${tileColor === t.c ? ' on' : ''}`} style={{ background: t.c }} title={t.name} aria-label={t.name} onClick={() => setTileColor(t.c)} />
           ))}
           <label className="tile-swatch custom" title="Свой цвет">
-            <input type="color" value={tileColor ?? '#888888'} onChange={(e) => setTileColor(e.target.value)} />
+            <input type="color" value={tileColor} onChange={(e) => setTileColor(e.target.value)} />
           </label>
-          <button className={`btn xs${tileColor === null ? ' accent' : ''}`} onClick={() => setTileColor(null)} title="Стирать тайлы">
-            <Eraser size={14} /> стирать
-          </button>
           <span className="muted" style={{ marginLeft: 8 }}>кисть</span>
-          {[1, 2, 3, 5].map((b) => (
+          {[1, 2, 3, 5, 8].map((b) => (
             <button key={b} className={`btn xs${brush === b ? ' accent' : ''}`} onClick={() => setBrush(b)}>{b}×{b}</button>
           ))}
           <div className="grow" />
@@ -477,7 +590,7 @@ function BoardCanvas({ campaignId, board, dm, userId, characters, npcs }: { camp
         </div>
       )}
 
-      {dm && tool !== 'tile' && (
+      {dm && tool !== 'tile' && tool !== 'erase' && (
         <div className="board-bar small">
           <label className="check">
             <input type="checkbox" checked={board.showGrid} onChange={(e) => run([{ t: 'settings', showGrid: e.target.checked }])} /> <Grid3x3 size={14} /> Сетка
@@ -518,10 +631,11 @@ function BoardCanvas({ campaignId, board, dm, userId, characters, npcs }: { camp
           addImages([...e.dataTransfer.files], toBoard(e.clientX, e.clientY));
         }}
       >
-        <svg ref={svg} className="board-svg" style={{ cursor }} onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp}>
+        <svg ref={svg} className="board-svg" style={{ cursor }} onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp} onPointerLeave={() => { if (cursorRef.current) cursorRef.current.style.display = 'none'; }}>
           <defs>
-            <pattern id={`grid-${campaignId}`} width={g} height={g} patternUnits="userSpaceOnUse">
-              <path d={`M ${g} 0 L 0 0 0 ${g}`} fill="none" stroke="rgba(0,0,0,.28)" strokeWidth={1 / Math.max(view.scale, 0.2)} />
+            <pattern id={`grid-${campaignId}`} width={g * 5} height={g * 5} patternUnits="userSpaceOnUse">
+              <path d={[1, 2, 3, 4].map((i) => `M${i * g} 0V${g * 5}M0 ${i * g}H${g * 5}`).join('')} fill="none" className="grid-minor" strokeWidth={1 / Math.max(view.scale, 0.2)} />
+              <path d={`M0 0V${g * 5}M0 0H${g * 5}`} fill="none" className="grid-major" strokeWidth={1.6 / Math.max(view.scale, 0.2)} />
             </pattern>
             {board.tokens.filter((t) => t.imageFileId).map((t) => (
               <clipPath key={t.id} id={`clip-${t.id}`}>
@@ -530,14 +644,25 @@ function BoardCanvas({ campaignId, board, dm, userId, characters, npcs }: { camp
             ))}
           </defs>
           <g transform={`translate(${view.x} ${view.y}) scale(${view.scale || 1})`}>
-            <rect data-bg width={board.width} height={board.height} className="board-paper" />
             {board.mapFileId && <image data-bg href={fileUrl(board.mapFileId)} width={board.width} height={board.height} preserveAspectRatio="none" />}
             <g data-bg shapeRendering="crispEdges">
               {tiles.map((t) => (
-                <rect key={t.k} x={t.x * g} y={t.y * g} width={g} height={g} fill={t.c} />
+                <path key={t.c} d={t.d} fill={t.c} />
               ))}
             </g>
-            {board.showGrid && <rect data-bg width={board.width} height={board.height} fill={`url(#grid-${campaignId})`} pointerEvents="none" />}
+            {board.showGrid && g * view.scale >= 5 && view.scale > 0 && (
+              <rect
+                x={Math.floor(-view.x / view.scale / (g * 5)) * g * 5 - g * 5}
+                y={Math.floor(-view.y / view.scale / (g * 5)) * g * 5 - g * 5}
+                width={stage.w / view.scale + g * 10}
+                height={stage.h / view.scale + g * 10}
+                fill={`url(#grid-${campaignId})`}
+                pointerEvents="none"
+              />
+            )}
+            {(tool === 'tile' || tool === 'erase') && canDraw && (
+              <rect ref={cursorRef} width={brush * g} height={brush * g} className={`brush-cursor${tool === 'erase' ? ' erase' : ''}`} style={{ display: 'none' }} strokeWidth={2 / Math.max(view.scale, 0.1)} pointerEvents="none" />
+            )}
 
             {[...board.items].sort((a, b) => a.z - b.z).map((it) => {
               const b = itemBox(it);
@@ -610,7 +735,7 @@ function BoardCanvas({ campaignId, board, dm, userId, characters, npcs }: { camp
               );
             })}
 
-            {board.strokes.map((s) => (
+            {board.strokes.filter((s) => !erased?.has(s.id)).map((s) => (
               <polyline
                 key={s.id}
                 points={s.points.join(' ')}
@@ -619,13 +744,7 @@ function BoardCanvas({ campaignId, board, dm, userId, characters, npcs }: { camp
                 strokeWidth={s.width}
                 strokeLinecap="round"
                 strokeLinejoin="round"
-                className={tool === 'erase' && (dm || s.authorId === userId) ? 'erasable' : undefined}
-                pointerEvents={tool === 'erase' ? 'stroke' : 'none'}
-                onPointerDown={(e) => {
-                  if (tool !== 'erase' || !(dm || s.authorId === userId)) return;
-                  e.stopPropagation();
-                  run([{ t: 'stroke-remove', id: s.id }]);
-                }}
+                pointerEvents="none"
               />
             ))}
             {draft && <polyline points={draft.join(' ')} fill="none" stroke={color} strokeWidth={width} strokeLinecap="round" strokeLinejoin="round" opacity={0.8} />}

@@ -3,6 +3,7 @@ import '@fontsource/cormorant-garamond/600.css';
 import '@fontsource/cormorant-garamond/600-italic.css';
 import '@fontsource/cormorant-garamond/700.css';
 import '@fontsource-variable/inter';
+import '@fontsource/ruslan-display/400.css';
 import './styles/app.css';
 import './styles/sheet.css';
 import './styles/theme.css';

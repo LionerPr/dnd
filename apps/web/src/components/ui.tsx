@@ -1,4 +1,5 @@
 import { X } from 'lucide-react';
+import { Logo } from './Logo';
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 
@@ -68,7 +69,7 @@ export function Segmented<T extends string>({ options, value, onChange }: { opti
 export const Spinner = () => <div className="spinner" aria-label="Загрузка" />;
 export const Loading = () => (
   <div className="center">
-    <Spinner />
+    <Logo size={34} className="rolling" />
   </div>
 );
 

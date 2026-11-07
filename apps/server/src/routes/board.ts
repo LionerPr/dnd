@@ -108,10 +108,10 @@ const MAX_STROKES = 300;
 const MAX_POINTS = 600;
 const MAX_MEDIA = 100;
 const MAX_TOKENS = 120;
-const MAX_TILES = 8000;
+const MAX_TILES = 20000;
 const MAX_ITEMS = 200;
 
-const coord = z.number().finite().min(-10000).max(30000);
+const coord = z.number().finite().min(-200000).max(200000);
 const color = z.string().regex(/^#[0-9a-fA-F]{3,8}$/);
 
 const Op = z.discriminatedUnion('t', [
@@ -125,7 +125,7 @@ const Op = z.discriminatedUnion('t', [
   z.object({ t: z.literal('settings'), mapFileId: z.string().max(40).nullable().optional(), width: z.number().int().min(200).max(12000).optional(), height: z.number().int().min(200).max(12000).optional(), grid: z.number().min(10).max(400).optional(), showGrid: z.boolean().optional(), playersDraw: z.boolean().optional() }),
   z.object({ t: z.literal('media-add'), fileId: z.string().max(40), caption: z.string().max(300).optional() }),
   z.object({ t: z.literal('media-remove'), id: z.string().max(40) }),
-  z.object({ t: z.literal('tiles'), cells: z.array(z.tuple([z.number().int().min(-500).max(2000), z.number().int().min(-500).max(2000)])).min(1).max(4000), color: color.nullable() }),
+  z.object({ t: z.literal('tiles'), cells: z.array(z.tuple([z.number().int().min(-5000).max(5000), z.number().int().min(-5000).max(5000)])).min(1).max(4000), color: color.nullable() }),
   z.object({ t: z.literal('tiles-clear') }),
   z.object({ t: z.literal('item-add'), item: z.object({ type: z.enum(['image', 'note', 'text', 'rect']), x: coord, y: coord, w: z.number().min(10).max(20000), h: z.number().min(10).max(20000), fileId: z.string().max(40).optional(), text: z.string().max(2000).optional(), color: color.optional() }) }),
   z.object({ t: z.literal('item-update'), id: z.string().max(40), patch: z.object({ x: coord.optional(), y: coord.optional(), w: z.number().min(10).max(20000).optional(), h: z.number().min(10).max(20000).optional(), text: z.string().max(2000).optional(), color: color.optional(), z: z.enum(['front', 'back']).optional() }) }),

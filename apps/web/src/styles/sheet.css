@@ -483,3 +483,7 @@ input[type='range'] { accent-color: var(--accent); }
 .item-handle { fill: #fff; stroke: var(--accent); stroke-width: 2px; vector-effect: non-scaling-stroke; cursor: nwse-resize; }
 .board-stage.dropping { outline: 3px dashed var(--accent); outline-offset: -3px; }
 .board-drop { position: absolute; inset: 0; display: grid; place-items: center; background: color-mix(in srgb, var(--accent) 12%, transparent); font-weight: 700; color: var(--accent); pointer-events: none; }
+.grid-minor { stroke: rgba(60, 40, 20, 0.16); }
+.grid-major { stroke: rgba(60, 40, 20, 0.32); }
+.brush-cursor { fill: color-mix(in srgb, var(--gold) 18%, transparent); stroke: var(--gold); stroke-dasharray: 4 3; }
+.brush-cursor.erase { fill: rgba(255, 255, 255, 0.25); stroke: var(--ink); }
