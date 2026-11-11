@@ -37,9 +37,10 @@ export function Trackers({ view, canEdit, cmd }: { view: CharacterView; canEdit:
             </div>
           ) : (
             <div className="row">
-              <button className="btn sm" disabled={!canEdit || r.used >= r.max} onClick={() => cmd({ type: 'resource', id: r.id, delta: 5 })}>−5</button>
+              <button className="btn sm" disabled={!canEdit || r.used >= r.max} onClick={() => cmd({ type: 'resource', id: r.id, delta: Math.min(5, r.max - r.used) })}>−5</button>
               <button className="btn sm" disabled={!canEdit || r.used >= r.max} onClick={() => cmd({ type: 'resource', id: r.id, delta: 1 })}>−1</button>
               <button className="btn sm" disabled={!canEdit || r.used <= 0} onClick={() => cmd({ type: 'resource', id: r.id, delta: -1 })}>+1</button>
+              <button className="btn sm" disabled={!canEdit || r.used <= 0} onClick={() => cmd({ type: 'resource', id: r.id, delta: -Math.min(5, r.used) })}>+5</button>
             </div>
           )}
         </div>
