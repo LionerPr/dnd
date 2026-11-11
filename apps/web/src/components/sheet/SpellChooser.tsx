@@ -180,15 +180,32 @@ export function SpellChooser({ data, sheet, update, compact }: { data: Character
       {levels.length > 0 && (
         <div className="sc-tabs">
           {levels.map((l) => {
+            const left = fullFor(l) ? 0 : l === 0 ? (c.cantripsMax ?? 0) - p.cantrips.length : isArcanum(l) ? 1 : p.spellsCap !== undefined ? p.spellsCap - p.spells.length : 0;
             const n = l === 0 ? p.cantrips.length : isArcanum(l) ? p.arcanum.filter((r) => Number(r.data?.level) === l).length : p.spells.filter((r) => Number(r.data?.level) === l).length;
             return (
               <button key={l} className={l === level ? 'on' : ''} onClick={() => setTab(l)}>
                 {l === 0 ? 'Заговоры' : isArcanum(l) ? `Арканум ${l}` : `${l} круг`}
                 {n > 0 && <span className="sc-n">{n}</span>}
+                {left > 0 && <span className="sc-left" title="Можно взять ещё">+{left}</span>}
               </button>
             );
           })}
         </div>
+      )}
+      {level !== undefined && (
+        <p className="sc-hint small">
+          {level === 0
+            ? `Заговоры: взято ${p.cantrips.length} из ${c.cantripsMax ?? 0}, можно ещё ${Math.max(0, (c.cantripsMax ?? 0) - p.cantrips.length)}.`
+            : isArcanum(level)
+              ? `Арканум ${level} круга: одно заклинание${p.arcanum.some((r) => Number(r.data?.level) === level) ? ', уже выбрано' : ', ещё не выбрано'}.`
+              : p.spellsCap !== undefined
+                ? (() => {
+                    const here = p.spells.filter((r) => Number(r.data?.level) === level).length;
+                    const left = Math.max(0, p.spellsCap - p.spells.length);
+                    return `${level} круг: взято ${here}. Можно взять ещё ${left}. Лимит ${p.spellsCap} ${p.book ? 'в книге' : 'заклинаний'} общий для кругов 1–${c.maxSpellLevel}, по кругам его можно делить как угодно.`;
+                  })()
+                : null}
+        </p>
       )}
       <label className="search-input">
         <Search size={16} />

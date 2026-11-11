@@ -530,3 +530,6 @@ input[type='range'] { accent-color: var(--accent); }
   background: var(--surface); border: 1px solid var(--line); border-radius: 10px;
   box-shadow: var(--shadow-lift); padding: 12px 14px; color: var(--ink); font-size: 13.5px; line-height: 1.5;
 }
+.sc-left { font-size: 11px; color: var(--arcane); font-weight: 600; }
+.sc-tabs button.on .sc-left { color: var(--gold-soft, var(--surface)); }
+.sc-hint { margin: 0; color: var(--ink-2); }
