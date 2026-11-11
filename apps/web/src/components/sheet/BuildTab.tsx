@@ -5,7 +5,7 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api, type CharacterView, type ContentRow } from '../../api/client';
 import { bookShort, signed } from '../../lib/format';
-import { useContentList } from '../../lib/hooks';
+import { useContentList, useSubclassOptions } from '../../lib/hooks';
 import { ChoiceRow, ChosenList } from './Choices';
 import { Field, NumberInput, Segmented } from '../ui';
 
@@ -251,11 +251,12 @@ export function BuildTab({ view, save }: { view: CharacterView; save: Save }) {
 
 function ClassRow({ index, entry, options, save }: { index: number; entry: Character['classes'][number]; options: ContentRow[]; save: Save }) {
   const cls = useFull<CharacterClass>(entry.classId);
+  const subs = useSubclassOptions(entry.classId);
   const update = (patch: Partial<Character['classes'][number]>) => save((d) => ({ ...d, classes: d.classes.map((x, i) => (i === index ? { ...x, ...patch } : x)) }));
   return (
     <div className="row wrap" style={{ alignItems: 'flex-end' }}>
       <Field label="Класс" className="grow">
-        <select className="select" value={entry.classId} onChange={(e) => update({ classId: e.target.value, subclassId: undefined })}>
+        <select className="select" value={entry.classId} onChange={(e) => update({ classId: e.target.value, subclassId: undefined, subclassFrom: undefined })}>
           {options.map((o) => (
             <option key={o.id} value={o.id}>
               {o.name}
@@ -266,13 +267,20 @@ function ClassRow({ index, entry, options, save }: { index: number; entry: Chara
       <Field label="Уровень">
         <NumberInput value={entry.level} min={1} max={20} style={{ width: 72 }} onChange={(v) => update({ level: v })} />
       </Field>
-      {cls.data && entry.level >= cls.data.subclassLevel && cls.data.subclasses.length > 0 && (
+      {cls.data && entry.level >= cls.data.subclassLevel && subs.options.length > 0 && (
         <Field label="Подкласс" className="grow">
-          <select className="select" value={entry.subclassId ?? ''} onChange={(e) => update({ subclassId: e.target.value || undefined })}>
+          <select
+            className="select"
+            value={entry.subclassId ? `${entry.subclassFrom ?? ''}|${entry.subclassId}` : ''}
+            onChange={(e) => {
+              const [from, id] = e.target.value.split('|');
+              update({ subclassId: id || undefined, subclassFrom: from || undefined });
+            }}
+          >
             <option value="">Не выбран</option>
-            {cls.data.subclasses.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.name}
+            {subs.options.map(({ sub: s, from, legacy }) => (
+              <option key={`${from ?? ''}|${s.id}`} value={`${from ?? ''}|${s.id}`}>
+                {s.name}{legacy ? ' (5e 2014)' : ''}
               </option>
             ))}
           </select>

@@ -1,4 +1,4 @@
-import { roll as rollDice, type Character } from '@dnd/rules-engine';
+import { roll as rollDice, type Character, type CharacterClass, type Subclass } from '@dnd/rules-engine';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useRef } from 'react';
 import { api, type CharacterView, type Command, type ContentRow } from '../api/client';
@@ -108,4 +108,29 @@ export function useContentList(kind: string, extra: Record<string, string | numb
 /** Полные данные расы, класса и т.п. из библиотеки */
 export function useContentItem<T>(id: string | undefined) {
   return useQuery({ queryKey: ['content-item', id], queryFn: () => api<{ item: ContentRow }>(`/content/${id}`).then((r) => r.item.data as T), enabled: !!id, staleTime: 10 * 60_000 });
+}
+
+/**
+ * Подклассы на выбор: свои и подклассы одноимённого класса 2014 года.
+ * В SRD 5.2 у каждого класса 2024 только один подкласс, остальные берём из импорта dnd.su.
+ */
+export interface SubclassOption {
+  sub: Subclass;
+  /** id класса, у которого взят подкласс; undefined — свой */
+  from?: string;
+  legacy: boolean;
+}
+export function useSubclassOptions(classId: string | undefined) {
+  const cls = useContentItem<CharacterClass>(classId);
+  const list = useContentList('class');
+  const own = cls.data;
+  const twinRow = own && (own.edition ?? '2014') === '2024'
+    ? list.data?.items.find((r) => r.id !== own.id && r.name.trim().toLowerCase() === own.name.trim().toLowerCase() && (r.data?.edition ?? '2014') === '2014')
+    : undefined;
+  const twin = useContentItem<CharacterClass>(twinRow?.id);
+  const options: SubclassOption[] = (own?.subclasses ?? []).map((sub) => ({ sub, legacy: false }));
+  const norm = (s: string) => s.toLowerCase().replace(/ё/g, 'е').replace(/[^а-яa-z]/g, '');
+  const have = new Set(options.map((o) => norm(o.sub.name)));
+  for (const sub of twin.data?.subclasses ?? []) if (!have.has(norm(sub.name))) options.push({ sub, from: twinRow!.id, legacy: true });
+  return { cls: own, options, loading: cls.isLoading || (!!twinRow && twin.isLoading) };
 }

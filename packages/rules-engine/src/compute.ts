@@ -54,6 +54,15 @@ export interface SourcedFeature extends Feature {
 }
 
 /** Все активные умения персонажа: раса, подраса, классы и подклассы до текущего уровня, черты, ручные. */
+/** Подкласс записи класса: свой или взятый у одноимённого класса другого издания */
+export function subclassOf(entry: Character['classes'][number], content: ContentIndex) {
+  if (entry.subclassFrom && entry.subclassFrom !== entry.classId) {
+    const s = content.classes.get(entry.subclassFrom)?.subclasses.find((x) => x.id === entry.subclassId);
+    if (s) return s;
+  }
+  return content.classes.get(entry.classId)?.subclasses.find((x) => x.id === entry.subclassId);
+}
+
 export function collectFeatures(c: Character, content: ContentIndex): SourcedFeature[] {
   const out: SourcedFeature[] = [];
   const lvl = totalLevel(c);
@@ -80,7 +89,7 @@ export function collectFeatures(c: Character, content: ContentIndex): SourcedFea
       const byLevel = f.level !== undefined ? f.level <= entry.level : unlocked.has(f.id);
       if (byLevel && allowed(f)) out.push({ ...f, origin: `${cls.name} ${entry.level}`, from: 'class', sourceLevel: entry.level });
     }
-    const sub = cls.subclasses.find((s) => s.id === entry.subclassId);
+    const sub = subclassOf(entry, content);
     if (sub) {
       for (const f of sub.features) {
         if ((f.level ?? cls.subclassLevel) <= entry.level && allowed(f)) {
@@ -571,7 +580,7 @@ export function computeSheet(c: Character, content: ContentIndex): Sheet {
   for (const entry of c.classes) {
     const cls = content.classes.get(entry.classId);
     if (!cls) continue;
-    const sub = cls.subclasses.find((s) => s.id === entry.subclassId);
+    const sub = subclassOf(entry, content);
     const sc = cls.spellcasting ?? sub?.spellcasting;
     if (!sc) continue;
     if (sc.progression === 'pact') warlockLevel += entry.level;

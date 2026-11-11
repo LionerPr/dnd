@@ -285,7 +285,8 @@ export interface Character {
   name: string;
   raceId?: string;
   subraceId?: string;
-  classes: { classId: string; level: number; subclassId?: string }[];
+  /** subclassFrom — класс, из которого взят подкласс (подклассы 2014 у класса 2024 с тем же названием) */
+  classes: { classId: string; level: number; subclassId?: string; subclassFrom?: string }[];
   baseAbilities: Record<Ability, number>;
   /** Выборы игрока: ключ — id эффекта choice / ability_choice, значение — выбранные id */
   choices: Record<string, string[]>;

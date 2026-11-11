@@ -418,3 +418,16 @@ describe('лимиты заклинаний', () => {
     expect(computeSheet({ ...c, choices: { 'part.cleric.divine-order.1': ['Защитник'] } }, idx).proficiencies.armor).toContain('heavy');
   });
 });
+
+describe('подкласс 2014 у класса 2024', () => {
+  it('умения и заклинательство берутся из подкласса одноимённого класса', () => {
+    const seed = JSON.parse(readFileSync(resolve(import.meta.dirname, '../../../apps/server/src/seed/srd2024.json'), 'utf8')) as CharacterClass[];
+    const pal24 = seed.find((x) => x.id === 'srd24-class-paladin')!;
+    const pal14: CharacterClass = { ...pal24, id: 'pal14', edition: undefined, subclasses: [{ id: 'vengeance', name: 'Клятва мести', features: [{ id: 'v.3', name: 'Обет вражды', description: '', level: 3 }, { id: 'v.7', name: 'Неумолимый мститель', description: '', level: 7 }] }] };
+    const idx: ContentIndex = { races: new Map(), classes: new Map([[pal24.id, pal24], [pal14.id, pal14]]), spells: new Map(), items: new Map(), feats: new Map() };
+    const c: Character = { ...torin(), edition: '2024', raceId: undefined, subraceId: undefined, classes: [{ classId: pal24.id, level: 3, subclassId: 'vengeance', subclassFrom: 'pal14' }] };
+    const names = computeSheet(c, idx).features.map((f) => f.name);
+    expect(names).toContain('Обет вражды');
+    expect(names).not.toContain('Неумолимый мститель');
+  });
+});

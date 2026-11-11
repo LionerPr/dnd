@@ -148,7 +148,10 @@ export async function contentIndexFor(db: Db, chars: Character[]): Promise<Conte
   const ids = new Set<string>();
   for (const c of chars) {
     if (c.raceId) ids.add(c.raceId);
-    c.classes.forEach((cl) => ids.add(cl.classId));
+    c.classes.forEach((cl) => {
+      ids.add(cl.classId);
+      if (cl.subclassFrom) ids.add(cl.subclassFrom);
+    });
     c.inventory.forEach((i) => i.itemId && ids.add(i.itemId));
     c.featIds.forEach((f) => ids.add(f));
     const bgFeat = backgroundById(c.backgroundId)?.featId;

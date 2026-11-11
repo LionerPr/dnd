@@ -4,7 +4,7 @@ import { ArrowRight, Dices } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { api, type CharacterView } from '../../api/client';
 import { signed } from '../../lib/format';
-import { useContentItem, useContentList } from '../../lib/hooks';
+import { useContentItem, useContentList, useSubclassOptions } from '../../lib/hooks';
 import { Modal, NumberInput, Segmented, Spinner } from '../ui';
 import { ChoiceRow } from './Choices';
 import { SpellChooser } from './SpellChooser';
@@ -83,7 +83,8 @@ export function LevelUpModal({ view, onClose, onSave }: { view: CharacterView; o
   const beforePending = new Map(before.pendingChoices.map((p) => [p.id, p.pick]));
   const choices = after?.pendingChoices.filter((p) => (beforePending.get(p.id) ?? 0) < p.pick) ?? [];
   const original = index < 0 ? undefined : c.classes[index];
-  const needsSubclass = !!cls.data && cls.data.subclasses.length > 0 && newLevel >= cls.data.subclassLevel && !original?.subclassId;
+  const subs = useSubclassOptions(entry?.classId);
+  const needsSubclass = !!cls.data && subs.options.length > 0 && newLevel >= cls.data.subclassLevel && !original?.subclassId;
   const optional = cls.data?.features.filter((f) => f.optional && f.level === newLevel) ?? [];
 
   const row = (lvl: number) => cls.data?.levels.find((l) => l.level === lvl)?.columns ?? {};
@@ -191,18 +192,19 @@ export function LevelUpModal({ view, onClose, onSave }: { view: CharacterView; o
         <section className="lu-section">
           <h4>Подкласс</h4>
           <div className="part-options">
-            {cls.data.subclasses.map((s) => (
-              <details key={s.id} className={`part-option${entry?.subclassId === s.id ? ' picked' : ''}`}>
+            {subs.options.map(({ sub: s, from, legacy }) => (
+              <details key={`${from ?? ''}:${s.id}`} className={`part-option${entry?.subclassId === s.id && entry?.subclassFrom === from ? ' picked' : ''}`}>
                 <summary>
                   <span className="t">{s.name}</span>
+                  {legacy && <span className="tag" title="Подкласс из правил 2014 года: в открытых правилах 2024 его нет">5e 2014</span>}
                   <button
-                    className={`btn xs ${entry?.subclassId === s.id ? 'primary' : 'accent'}`}
+                    className={`btn xs ${entry?.subclassId === s.id && entry?.subclassFrom === from ? 'primary' : 'accent'}`}
                     onClick={(e) => {
                       e.preventDefault();
-                      update((d) => ({ ...d, classes: d.classes.map((x) => (x.classId === entry!.classId ? { ...x, subclassId: s.id } : x)) }));
+                      update((d) => ({ ...d, classes: d.classes.map((x) => (x.classId === entry!.classId ? { ...x, subclassId: s.id, subclassFrom: from } : x)) }));
                     }}
                   >
-                    {entry?.subclassId === s.id ? 'Выбрано' : 'Выбрать'}
+                    {entry?.subclassId === s.id && entry?.subclassFrom === from ? 'Выбрано' : 'Выбрать'}
                   </button>
                 </summary>
                 <div className="body">

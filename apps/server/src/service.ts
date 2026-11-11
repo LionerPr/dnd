@@ -1,4 +1,4 @@
-import { computeSheet, type Character } from '@dnd/rules-engine';
+import { computeSheet, subclassOf, type Character } from '@dnd/rules-engine';
 import type { AppDeps } from './app.js';
 import type { User } from './auth.js';
 import { applyToCharacter, applyToNpc, DM_COMMANDS, HP_COMMANDS, MONEY_COMMANDS, type Command } from './commands.js';
@@ -56,7 +56,7 @@ export function namesFor(c: Character, index: Awaited<ReturnType<typeof contentI
     subrace: race?.subraces?.find((s) => s.id === c.subraceId)?.name,
     classes: c.classes.map((cl) => {
       const cls = index.classes.get(cl.classId);
-      return { id: cl.classId, name: cls?.name ?? '?', level: cl.level, subclass: cls?.subclasses.find((s) => s.id === cl.subclassId)?.name };
+      return { id: cl.classId, name: cls?.name ?? '?', level: cl.level, subclass: subclassOf(cl, index)?.name };
     }),
   };
 }
