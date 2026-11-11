@@ -2,6 +2,7 @@ import type { FeaturePart } from '@dnd/rules-engine';
 import type { CharacterView } from '../../api/client';
 import { profName } from '../../lib/format';
 import { Empty } from '../ui';
+import { RichText } from './RichText';
 
 type FeatureLike = { id: string; name: string; description: string; level?: number; origin?: string; parts?: FeaturePart[]; choose?: unknown; chosenParts?: string[] };
 
@@ -27,13 +28,13 @@ export function FeatureList({ features, open }: { features: FeatureLike[]; open?
               {f.level !== undefined && <span className="small muted">{f.level} ур.</span>}
             </summary>
             <div className="body">
-              {f.description || (!parts.length && <span className="muted">Без описания</span>)}
+              {f.description ? <RichText text={f.description} /> : !parts.length && <span className="muted">Без описания</span>}
               {parts.length > 0 && (
                 <div className="feature-parts">
                   {parts.map((p) => (
                     <div key={p.name} className="feature-part">
                       <b>{p.name}</b>
-                      <div>{p.description}</div>
+                      <div><RichText text={p.description} /></div>
                     </div>
                   ))}
                 </div>

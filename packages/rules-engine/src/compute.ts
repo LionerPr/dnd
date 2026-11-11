@@ -242,6 +242,47 @@ export interface CasterInfo {
   /** Колдун: круги мистического арканума (по одному заклинанию 6–9 круга, вне лимита) */
   arcanum?: number[];
   edition: Edition;
+  /** Заклинания подкласса, которые всегда подготовлены (клятва, домен, круг): по названиям, их ищут в библиотеке */
+  granted?: SubclassSpell[];
+  /** Заклинания, которые подкласс добавляет в список класса (расширенный список колдуна) */
+  extraList?: SubclassSpell[];
+}
+
+export interface SubclassSpell {
+  name: string;
+  nameEn?: string;
+  /** Откуда: название подкласса */
+  origin: string;
+}
+
+/**
+ * Таблицы заклинаний подкласса из текста умений («Уровень паладина | Заклинания», «3 | приказ [command], …»).
+ * Если первая колонка — уровень заклинания, это расширенный список (колдун); иначе — уровень класса, заклинания всегда подготовлены.
+ * Умения с несколькими таблицами (круг земли — по местности) и таблицы не по уровням (склонность божественной души) пропускаем: там нужен выбор.
+ */
+export function subclassSpells(sub: Subclass, classLevel: number, fallbackLevel: number): { granted: SubclassSpell[]; extraList: SubclassSpell[] } {
+  const granted: SubclassSpell[] = [];
+  const extraList: SubclassSpell[] = [];
+  for (const f of sub.features) {
+    if ((f.level ?? fallbackLevel) > classLevel) continue;
+    const lines = f.description.split('\n');
+    const heads = lines.map((l, i) => [l, i] as const).filter(([l]) => /^[^|]*\|\s*заклинани[ея]\s*$/i.test(l.trim()));
+    if (heads.length !== 1) continue;
+    const [head, at] = heads[0]!;
+    const bySpellLevel = /заклинани/i.test(head.split('|')[0]!);
+    for (const line of lines.slice(at + 1)) {
+      const m = line.trim().match(/^(\d+)(?:-?й)?\s*\|\s*(.+)$/);
+      if (!m) break;
+      if (!bySpellLevel && Number(m[1]) > classLevel) continue;
+      for (const cell of m[2]!.split(/,\s*(?![^\[]*\])/)) {
+        const s = cell.trim().match(/^(.+?)\s*(?:\[([^\]]+)\])?(?:\s*\(.*\))?$/);
+        if (!s?.[1]) continue;
+        const spell = { name: s[1].trim(), ...(s[2] ? { nameEn: s[2].trim() } : {}), origin: sub.name };
+        (bySpellLevel ? extraList : granted).push(spell);
+      }
+    }
+  }
+  return { granted, extraList };
 }
 
 export interface ResourceValue {
@@ -611,6 +652,7 @@ export function computeSheet(c: Character, content: ContentIndex): Sheet {
       maxSpellLevel,
       edition: editionOf(cls),
       ...limits,
+      ...(sub ? (({ granted, extraList }) => ({ ...(granted.length ? { granted } : {}), ...(extraList.length ? { extraList } : {}) }))(subclassSpells(sub, entry.level, cls.subclassLevel)) : {}),
       ...(sc.progression === 'pact' && entry.level >= 11 ? { arcanum: [[11, 6], [13, 7], [15, 8], [17, 9]].filter(([l]) => entry.level >= l!).map(([, s]) => s!) } : {}),
     });
   }

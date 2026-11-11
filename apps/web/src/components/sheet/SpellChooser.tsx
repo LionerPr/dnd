@@ -13,9 +13,19 @@ export type Caster = Sheet['casters'][number];
 /** Мистический рыцарь и ловкач берут заклинания из списка волшебника */
 const listName = (c: Caster) => (/^(воин|плут)$/i.test(c.className) ? 'волшебник' : c.className.toLowerCase());
 
+const norm = (s: unknown) => String(s ?? '').toLowerCase().replace(/ё/g, 'е').replace(/[’'`]/g, "'").replace(/\s+/g, ' ').trim();
+
+/** Строка библиотеки — это заклинание из таблицы подкласса? Сверяем по английскому названию, иначе по русскому */
+export function isSubclassSpell(r: ContentRow | { id: string; name?: string; data: any }, list: { name: string; nameEn?: string }[] | undefined) {
+  if (!list?.length) return false;
+  const en = norm(r.data?.nameEn);
+  const ru = norm(r.data?.name ?? (r as ContentRow).name);
+  return list.some((x) => (x.nameEn && en ? norm(x.nameEn) === en : norm(x.name) === ru));
+}
+
 export function spellFits(r: ContentRow | { id: string; data: any }, c: Caster) {
   const d = r.data ?? {};
-  return (d.classes ?? []).includes(c.classId) || (d.classNames ?? []).some((n: string) => n.toLowerCase() === listName(c));
+  return (d.classes ?? []).includes(c.classId) || (d.classNames ?? []).some((n: string) => n.toLowerCase() === listName(c)) || isSubclassSpell(r, c.extraList);
 }
 
 /** Заклинания нужного издания: для 2024 — ещё и заклинания 2014, у которых нет версии 2024 */
@@ -144,7 +154,7 @@ export function SpellChooser({ data, sheet, update, compact }: { data: Character
     level === undefined
       ? []
       : rows
-          .filter((r) => Number(r.data?.level ?? 0) === level && spellFits(r, c) && !bonus.has(r.id) && searchKey(r.name).includes(searchKey(q)))
+          .filter((r) => Number(r.data?.level ?? 0) === level && spellFits(r, c) && !bonus.has(r.id) && !isSubclassSpell(r, c.granted) && searchKey(r.name).includes(searchKey(q)))
           .sort((a, b) => Number(data.spellsKnown.includes(b.id)) - Number(data.spellsKnown.includes(a.id)) || a.name.localeCompare(b.name, 'ru'));
 
   return (

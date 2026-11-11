@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import {
+  subclassSpells,
   applyDamage,
   kitItems,
   parseKit,
@@ -440,5 +441,18 @@ describe('подкласс 2014 у класса 2024', () => {
     expect(at(2)).not.toContain('Боевой жрец');
     expect(at(3)).toContain('Боевой жрец');
     expect(at(6)).toContain('Благословение бога войны');
+  });
+});
+
+describe('заклинания подкласса из таблицы', () => {
+  it('клятва: по уровню класса; колдун: расширенный список по кругу; круг земли пропускаем', () => {
+    const oath = { id: 'o', name: 'Клятва покорения', features: [{ id: 'o.3', name: 'Заклинания клятвы', level: 3, description: 'Вы получаете заклинания клятвы.\nУровень | Заклинание\n3 | доспех Агатиса [armor of Agathys], приказ [command]\n5 | удержание личности [hold person], божественное оружие [spiritual weapon]\n9 | проклятие [bestow curse], ужас [fear]' }] };
+    expect(subclassSpells(oath, 5, 3).granted.map((x) => x.nameEn)).toEqual(['armor of Agathys', 'command', 'hold person', 'spiritual weapon']);
+    const fiend = { id: 'f', name: 'Исчадие', features: [{ id: 'f.1', name: 'Расширенный список', level: 1, description: 'Уровеньзаклинания | Заклинания\n1 | огненные ладони [burning hands], приказ [command]\n4 | призыв духа элементаля [summon elemental] (только вода), стена [wall, big]' }] };
+    const r = subclassSpells(fiend, 1, 1);
+    expect(r.granted).toEqual([]);
+    expect(r.extraList.map((x) => x.name)).toEqual(['огненные ладони', 'приказ', 'призыв духа элементаля', 'стена']);
+    const land = { id: 'l', name: 'Круг земли', features: [{ id: 'l.3', name: 'Заклинания круга', level: 3, description: 'Арктика\nУровень друида | Заклинания\n3 | а [a]\nГоры\nУровень друида | Заклинания\n3 | б [b]' }] };
+    expect(subclassSpells(land, 5, 3).granted).toEqual([]);
   });
 });

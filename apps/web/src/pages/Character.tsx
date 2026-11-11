@@ -9,6 +9,7 @@ import { AwardsTab } from '../components/sheet/AwardsTab';
 import { BuildTab } from '../components/sheet/BuildTab';
 import { CombatTab } from '../components/sheet/CombatTab';
 import { FeaturesTab } from '../components/sheet/FeaturesTab';
+import { norm, useSpellIndex } from '../components/sheet/RichText';
 import { GearTab } from '../components/sheet/GearTab';
 import { LevelUpModal } from '../components/sheet/LevelUp';
 import { NotesTab } from '../components/sheet/NotesTab';
@@ -52,6 +53,7 @@ export function CharacterPage() {
     },
   });
 
+  const spellIndex = useSpellIndex();
   if (q.isLoading) return <Loading />;
   if (q.error || !q.data)
     return (
@@ -64,7 +66,9 @@ export function CharacterPage() {
   const { data: c, sheet } = view;
   const canEdit = view.access?.canEdit ?? true;
   const isOwner = view.access?.owner ?? true;
-  const hasSpells = sheet.casters.length > 0 || c.spellsKnown.length > 0;
+  // Вкладка нужна и не-заклинателю, если умения дают заклинания (монах пути тени, тифлинг и т.п.)
+  const featureSpells = sheet.features.some((f) => [...(f.description ?? '').matchAll(/\[([^\]\n]{2,60})\]/g)].some((m) => spellIndex.en.has(norm(m[1]))));
+  const hasSpells = sheet.casters.length > 0 || c.spellsKnown.length > 0 || featureSpells;
   const configured = c.classes.length > 0;
 
   const exportJson = () => {
