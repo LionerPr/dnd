@@ -21,6 +21,7 @@ import type {
   ProficiencyKind,
   Edition,
   Spellcasting,
+  Subclass,
 } from './types.js';
 import { backgroundById } from './backgrounds.js';
 import { tryFormula } from './formula.js';
@@ -55,10 +56,21 @@ export interface SourcedFeature extends Feature {
 
 /** Все активные умения персонажа: раса, подраса, классы и подклассы до текущего уровня, черты, ручные. */
 /** Подкласс записи класса: свой или взятый у одноимённого класса другого издания */
+/**
+ * Подкласс другого издания у класса 2024: умения, которые в 2014 давались раньше, чем класс 2024 выбирает подкласс
+ * (домен жреца на 1-м, круг друида на 2-м), приходят на уровне выбора подкласса — как советует Книга игрока 2024.
+ */
+export function adaptSubclass(sub: Subclass, from: CharacterClass | undefined, to: CharacterClass | undefined): Subclass {
+  if (!to || !from || from.id === to.id) return sub;
+  const at = to.subclassLevel;
+  return { ...sub, features: sub.features.map((f) => ({ ...f, level: Math.max(f.level ?? from.subclassLevel, at) })) };
+}
+
 export function subclassOf(entry: Character['classes'][number], content: ContentIndex) {
   if (entry.subclassFrom && entry.subclassFrom !== entry.classId) {
-    const s = content.classes.get(entry.subclassFrom)?.subclasses.find((x) => x.id === entry.subclassId);
-    if (s) return s;
+    const from = content.classes.get(entry.subclassFrom);
+    const s = from?.subclasses.find((x) => x.id === entry.subclassId);
+    if (s) return adaptSubclass(s, from, content.classes.get(entry.classId));
   }
   return content.classes.get(entry.classId)?.subclasses.find((x) => x.id === entry.subclassId);
 }

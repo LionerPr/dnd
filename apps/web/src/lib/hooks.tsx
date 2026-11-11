@@ -1,4 +1,4 @@
-import { roll as rollDice, type Character, type CharacterClass, type Subclass } from '@dnd/rules-engine';
+import { adaptSubclass, roll as rollDice, type Character, type CharacterClass, type Subclass } from '@dnd/rules-engine';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useRef } from 'react';
 import { api, type CharacterView, type Command, type ContentRow } from '../api/client';
@@ -131,6 +131,6 @@ export function useSubclassOptions(classId: string | undefined) {
   const options: SubclassOption[] = (own?.subclasses ?? []).map((sub) => ({ sub, legacy: false }));
   const norm = (s: string) => s.toLowerCase().replace(/ё/g, 'е').replace(/[^а-яa-z]/g, '');
   const have = new Set(options.map((o) => norm(o.sub.name)));
-  for (const sub of twin.data?.subclasses ?? []) if (!have.has(norm(sub.name))) options.push({ sub, from: twinRow!.id, legacy: true });
+  for (const sub of twin.data?.subclasses ?? []) if (!have.has(norm(sub.name))) options.push({ sub: adaptSubclass(sub, twin.data, own), from: twinRow!.id, legacy: true });
   return { cls: own, options, loading: cls.isLoading || (!!twinRow && twin.isLoading) };
 }

@@ -192,11 +192,10 @@ export function LevelUpModal({ view, onClose, onSave }: { view: CharacterView; o
         <section className="lu-section">
           <h4>Подкласс</h4>
           <div className="part-options">
-            {subs.options.map(({ sub: s, from, legacy }) => (
+            {subs.options.map(({ sub: s, from }) => (
               <details key={`${from ?? ''}:${s.id}`} className={`part-option${entry?.subclassId === s.id && entry?.subclassFrom === from ? ' picked' : ''}`}>
                 <summary>
                   <span className="t">{s.name}</span>
-                  {legacy && <span className="tag" title="Подкласс из правил 2014 года: в открытых правилах 2024 его нет">5e 2014</span>}
                   <button
                     className={`btn xs ${entry?.subclassId === s.id && entry?.subclassFrom === from ? 'primary' : 'accent'}`}
                     onClick={(e) => {

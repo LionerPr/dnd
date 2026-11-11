@@ -430,4 +430,15 @@ describe('подкласс 2014 у класса 2024', () => {
     expect(names).toContain('Обет вражды');
     expect(names).not.toContain('Неумолимый мститель');
   });
+
+  it('умения домена 1-го уровня приходят на 3-м, когда жрец 2024 выбирает подкласс', () => {
+    const seed = JSON.parse(readFileSync(resolve(import.meta.dirname, '../../../apps/server/src/seed/srd2024.json'), 'utf8')) as CharacterClass[];
+    const cl24 = seed.find((x) => x.id === 'srd24-class-cleric')!;
+    const cl14: CharacterClass = { ...cl24, id: 'cl14', edition: undefined, subclassLevel: 1, subclasses: [{ id: 'war', name: 'Домен войны', features: [{ id: 'w.1', name: 'Боевой жрец', description: '', level: 1 }, { id: 'w.6', name: 'Благословение бога войны', description: '', level: 6 }] }] };
+    const idx: ContentIndex = { races: new Map(), classes: new Map([[cl24.id, cl24], [cl14.id, cl14]]), spells: new Map(), items: new Map(), feats: new Map() };
+    const at = (level: number) => computeSheet({ ...torin(), edition: '2024', raceId: undefined, subraceId: undefined, classes: [{ classId: cl24.id, level, subclassId: 'war', subclassFrom: 'cl14' }] }, idx).features.map((f) => f.name);
+    expect(at(2)).not.toContain('Боевой жрец');
+    expect(at(3)).toContain('Боевой жрец');
+    expect(at(6)).toContain('Благословение бога войны');
+  });
 });

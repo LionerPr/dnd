@@ -278,9 +278,9 @@ function ClassRow({ index, entry, options, save }: { index: number; entry: Chara
             }}
           >
             <option value="">Не выбран</option>
-            {subs.options.map(({ sub: s, from, legacy }) => (
+            {subs.options.map(({ sub: s, from }) => (
               <option key={`${from ?? ''}|${s.id}`} value={`${from ?? ''}|${s.id}`}>
-                {s.name}{legacy ? ' (5e 2014)' : ''}
+                {s.name}
               </option>
             ))}
           </select>

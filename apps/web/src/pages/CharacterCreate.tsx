@@ -32,7 +32,7 @@ import { FeatureList } from '../components/sheet/FeaturesTab';
 import { SpellChooser } from '../components/sheet/SpellChooser';
 import { Empty, Field, Loading, Segmented } from '../components/ui';
 import { bookShort, profName, searchKey, signed } from '../lib/format';
-import { useCharacter, useCommand, useContentItem, useContentList, useSaveBuild } from '../lib/hooks';
+import { useCharacter, useCommand, useContentItem, useContentList, useSaveBuild, useSubclassOptions } from '../lib/hooks';
 
 type Save = (u: (c: Character) => Character) => void;
 const STEPS = ['Правила', 'Класс', 'Раса и предыстория', 'Характеристики', 'Мастерство', 'Снаряжение', 'Заклинания', 'Описание'] as const;
@@ -189,6 +189,7 @@ function ClassStep({ view, save }: { view: CharacterView; save: Save }) {
   const classes = useContentList('class');
   const current = c.classes[0];
   const cls = useContentItem<CharacterClass>(current?.classId);
+  const subs = useSubclassOptions(current?.classId);
   const lvl1 = cls.data?.features.filter((f) => (f.level ?? 1) <= 1 && !f.optional) ?? [];
   const items = (classes.data?.items ?? []).filter((r) => inEdition(r, editionOf(c)));
   return (
@@ -238,9 +239,9 @@ function ClassStep({ view, save }: { view: CharacterView; save: Save }) {
             <div>
               <span className="muted">Навыки:</span> {cls.data.skillChoices.pick} из {cls.data.skillChoices.from.map((s) => SKILLS[s]?.name ?? s).join(', ')}
             </div>
-            {cls.data.subclasses.length > 0 && (
+            {subs.options.length > 0 && (
               <div>
-                <span className="muted">Подкласс:</span> на {cls.data.subclassLevel} уровне — {cls.data.subclasses.map((s) => s.name).join(', ')}
+                <span className="muted">Подкласс:</span> на {cls.data.subclassLevel} уровне — {subs.options.map((o) => o.sub.name).join(', ')}
               </div>
             )}
           </div>
